@@ -13,15 +13,15 @@ venv/
 pyproject.toml
 
 # Environment variables and secrets
-.env
-*.env
 docker/.env
-docker/*.env
+
+# local development scripts
+scripts/set_env.ps1
 
 # Test directory and temporary test files
 test/data/
+test/test.py
 
 # OS generated files
 .DS_Store
 Thumbs.db
-

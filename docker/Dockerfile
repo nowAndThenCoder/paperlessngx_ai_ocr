@@ -1,6 +1,6 @@
 FROM python:3.14-slim
 
-# System-Abhängigkeiten für C-Extensions (u. a. PyMuPDF/fitz & LanceDB-Unterbau)
+# System dependencies for C-Extensions (e.g. PyMuPDF/fitz & LanceDB base)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libmupdf-dev \
@@ -9,16 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Requirements kopieren und ohne Caching installieren
+# Copy requirements and install without caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Anwendungscode kopieren
+# Copy application code
 COPY . .
 
-# Port 5000 für die Paperless-Integration freigeben
+# Expose port 5000 for Paperless integration
 EXPOSE 5000
 
-# Startkommando via Uvicorn auf 0.0.0.0
+# Start command via Uvicorn on 0.0.0.0
 CMD ["uvicorn", "app.main_restapi:app", "--host", "0.0.0.0", "--port", "5000"]

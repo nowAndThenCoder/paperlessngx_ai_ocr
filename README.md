@@ -29,9 +29,9 @@ When a request is received, the following sequence occurs:
 ### 2. Processing Phase (Worker)
 A sequential chain of commands is executed by the worker. If a step fails, an `OcrDocumentFailedCommand` is created.
 - `OcrDocumentCommand`: Checks for unprocessed pages. Creates `OcrPageCommand` if a page is found, otherwise proceeds to `CreateSearchablePdfCommand`.
-- `OcrPageCommand`: Loads Job from `Redis`, runs OCR with bounding boxes for a single page, saves results to `Redis`, and creates `OcrPageTextOnlyCommand`.
-- `OcrPageTextOnlyCommand`: Loads Job from `Redis`, runs OCR without bounding boxes for a single page, saves results to `Redis`, and creates `OcrParseResponseCommand`.
-- `OcrParseResponseCommand`: Loads Job from `Redis`, parses single page results, saves results to `Redis`, and creates `OcrDocumentCommand` (to check for next pages).
+   - `OcrPageCommand`: Loads Job from `Redis`, runs OCR with bounding boxes for a single page, saves results to `Redis`, and creates `OcrPageTextOnlyCommand`.
+   - `OcrPageTextOnlyCommand`: Loads Job from `Redis`, runs OCR without bounding boxes for a single page, saves results to `Redis`, and creates `OcrParseResponseCommand`.
+   - `OcrParseResponseCommand`: Loads Job from `Redis`, parses single page results, saves results to `Redis`, and creates `OcrDocumentCommand` (to check for next pages).
 - `CreateSearchablePdfCommand`: Loads Job from `Redis`, generates the searchable PDF, saves results to `Redis`, and creates `VectorizeCommand`.
 - `VectorizeCommand`: Loads Job from `Redis`, performs vectorization, saves results to `Redis`, and creates `PersistLanceDbCommand`.
 - `PersistLanceDbCommand`: Loads Job from `Redis`, persists data to LanceDB, and creates `OcrDocumentSucceededCommand`.
@@ -69,7 +69,7 @@ A sequential chain of commands is executed by the worker. If a step fails, an `O
 ## Getting Started
 
 ### Prerequisites
-- **Ollama**: Installed and running with the `qwen2.5-vl` and `nomic-embed-text` models.
+- **Ollama**: Installed and running with the `qwen2.5-vl:7B` and `nomic-embed-text` models.
 - **Redis**: Running instance.
 - **RabbitMQ**: Running instance.
 - **Python 3.10+**

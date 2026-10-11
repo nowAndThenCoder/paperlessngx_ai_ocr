@@ -25,11 +25,10 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - REDIS_HOST=ocr_redis
-      - REDIS_PORT=6379
-      - OLLAMA_URL=${OLLAMA_URL}
-      - OLLAMA_MODEL_VL=${OLLAMA_MODEL_VL}
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL}
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}     
     depends_on:
       - redis
       - rabbitmq
@@ -40,11 +39,19 @@ services:
     container_name: ocr_worker
     restart: unless-stopped
     environment:
-      - REDIS_HOST=ocr_redis
-      - REDIS_PORT=6379
+      - LOG_LEVEL=${LOG_LEVEL}
+      - MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS}
+      - MAX_THREADS_PER_JOB=${MAX_THREADS_PER_JOB}
+      - RABBITMQ_HOST=${RABBITMQ_HOST}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
       - OLLAMA_URL=${OLLAMA_URL}
       - OLLAMA_MODEL_VL=${OLLAMA_MODEL_VL}
-      - LOG_LEVEL=DEBUG
+      - OLLAMA_MODEL_TEXTEMBED=${OLLAMA_MODEL_TEXTEMBED}
+      - OLLAMA_TIMEOUT=${OLLAMA_TIMEOUT}
+      - OLLAMA_DPI=${OLLAMA_DPI}
+      - LANCEDB_DATA_DIR=${LANCEDB_DATA_DIR}
+      - PYTHONUNBUFFERED=${PYTHONUNBUFFERED}      
     depends_on:
       - redis
       - rabbitmq
