@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+
+# Virtual Environments
+.venv/
+venv/
+
+# IDEs and Editors
+.vscode/
+.idea/
+
+# IDEs and Editors settings
+pyproject.toml
+
+# Environment variables and secrets
+.env
+*.env
+docker/.env
+docker/*.env
+
+# Test directory and temporary test files
+test/data/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+

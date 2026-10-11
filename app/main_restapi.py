@@ -1,0 +1,181 @@
+from typing import Optional
+from uuid import UUID
+
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
+from uuid import UUID
+
+from app.services.config import logging
+from app.domain.models.job import JobStatus
+from app.repositories.job_repository import job_repository
+from app.services.job_dispatcher import JobDispatcher
+from app.services.qwen25_vl import Qwen25VlQuery
+from app.services.rest_client import rest_client
+
+app = FastAPI(
+    title="OCR Engine REST API (Azure Document Intelligence Mock)",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+logger = logging.getLogger(__name__)
+qwen_service = Qwen25VlQuery()
+job_dispatcher = JobDispatcher()
+
+
+@app.post(
+    "/documentintelligence/documentModels/{model_id}:analyze",
+    status_code=202,
+    summary="Entry URL for OCR execution on documents",
+)
+async def analyze_document(
+    model_id: str,
+    request: Request,
+    content_type: Optional[str] = Header(None, alias="Content-Type"),
+    api_version: str = Query("2023-07-31", alias="api-version"),
+):
+    try:
+        body_bytes = await request.body()
+        file_bytes = rest_client.fetch_file_bytes_from_request(content_type or "", body_bytes)
+        file_type = rest_client.get_file_type_of_bytes(file_bytes)
+
+        # TODO add persistence
+
+        # create polling URL
+        # Note: In a real scenario, we'd first create the job and get its ID.
+        # For this mock, we generate a temporary UUID to simulate the process.
+        import uuid
+        job_id = uuid.uuid4()
+        base_url = str(request.base_url).rstrip("/")
+        polling_url = f"{base_url}/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}?api-version={api_version}"
+
+        return Response(
+            status_code=202,
+            headers={
+                "Operation-Location": polling_url,
+                "Access-Control-Expose-Headers": "Operation-Location",
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"internal error: {str(e)}")
+
+
+@app.get(
+    "/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}",
+    summary="Polling-Endpunkt für den Status & das OCR-JSON-Ergebnis",
+)
+async def get_analysis_result(
+    model_id: str,
+    job_id: str,
+    api_version: str = Query("2023-07-31", alias="api-version"),
+):
+    try:
+        parsed_uuid = UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Ungültige Job-ID Formatierung: {job_id}")
+
+    # TODO get job from redis
+    from app.repositories.job_repository import job_repository
+    job = job_repository.find_by_id(parsed_uuid)
+
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job mit ID {job_id} nicht gefunden.")
+
+    # Status: RUNNING oder NOT_STARTED
+    if job.status != JobStatus.FAILED and job.status != JobStatus.SUCCEEDED:
+        from app.domain.models.job import JobStatus
+        job_status_text = job.status.to_friendly_string()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": job_status_text,
+                "createdDateTime": job.created_at,
+                "lastUpdatedDateTime": job.updated_at,
+                "percentCompleted": job.get_completion_percentage(),
+            },
+        )
+    elif job.status == JobStatus.FAILED:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "failed",
+                "createdDateTime": job.created_at,
+                "lastUpdatedDateTime": job.updated_at,
+                "error": {
+                    "code": "InternalServerError",
+                    "message": getattr(job, "error_message", None) or "Unbekannter Fehler bei der OCR-Verarbeitung.",
+                },
+            },
+        )
+    else:
+        # Status: SUCCEEDED -> Azure AI Read JSON zusammenstellen
+        merged_docs = OcrDocuments(pages=[])
+        for page in job.source_pages or []:
+            if page.ocr_page_result:
+                merged_docs.merge(page.ocr_page_result)
+
+        first_page = job.source_pages[0] if job.source_pages else None
+        width = int(first_page.page_width) if first_page else 1000
+        height = int(first_page.page_height) if first_page else 1000
+
+        analyze_result = qwen_service.convert_ocr_documents_to_azure_json(
+            merged_docs, img_width=width, img_height=height
+        )
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "succeeded",
+                "createdDateTime": job.created_at,
+                "lastUpdatedDateTime": job.updated_at,
+                "analyzeResult": analyze_result,
+            },
+        )
+
+
+@app.get(
+    "/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}/pdf",
+    summary="Download der verarbeiteten PDF-Datei",
+)
+async def get_analyze_result_pdf(
+    model_id: str,
+    job_id: str,
+    api_version: str = Query("2023-07-31", alias="api-version"),
+):
+    """Download-Endpunkt für das erzeugte durchsuchbare PDF (sobald CreatePdfTask fertig ist)."""
+    try:
+        parsed_uuid = UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Ungültige Job-ID Formatierung: {job_id}")
+
+    job = job_repository.get_by_id(parsed_uuid)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} nicht gefunden.")
+
+    if job.status != JobStatus.SUCCEEDED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job {job_id} ist noch nicht fertig (Aktueller Status: {job.status.value}).",
+        )
+
+    # Greift bevorzugt auf das in Schritt 3 generierte final_pdf_bytes zu, sonst Fallback
+    # pdf_bytes = job.final_pdf_bytes or (
+    #    job.source_pages[0].page_bytes if job.source_pages and job.source_pages[0].page_bytes else None
+    # )
+
+    pdf_bytes = None
+
+    if not pdf_bytes:
+        raise HTTPException(status_code=404, detail="Keine PDF-Bytes für diesen Job vorhanden.")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="searchable_{job_id}.pdf"',
+            "Content-Length": str(len(pdf_bytes)),
+        },
+    )

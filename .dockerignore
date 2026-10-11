@@ -1,0 +1,28 @@
+# Version Control & IDEs
+.git/
+.continue/
+.vscode/
+
+# Python environment & cache
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+
+# Environment & Config
+.env
+.gitignore
+
+# Local development scripts, tests & infra
+docker/
+scripts/
+test/
+test.py
+*.ps1
+
+# Docker configuration
+Dockerfile
+docker-compose.yml
+

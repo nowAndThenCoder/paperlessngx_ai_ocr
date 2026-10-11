@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+requests
+redis
+PyMuPDF
+Pillow
+lancedb
+urllib3
+pika
