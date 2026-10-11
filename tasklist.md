@@ -14,13 +14,13 @@ The system operates as a sequential state machine. A job progresses through a st
 ### 3. Data Lifecycle
 - **Transient State (Redis)**: All image blobs, intermediate OCR results, and job metadata live in Redis during processing to minimize disk I/O.
 - **Permanent State (LanceDB)**: Data is flushed from Redis to LanceDB only during the `PersistLanceDbCommand` phase.
-- **Fixed Interface**: The OCR model (`qwen25_vl.py`) is a fixed black box; no changes are permitted here.
+- **Fixed Interface**: The OCR model (`ocr_query_service.py`) is a fixed black box; no changes are permitted here.
 
 ---
 
 ## Completed Components
 - [x] **Worker Infrastructure**: Sequential processing (`prefetch=1`) and RabbitMQ consumption implemented in `app/main_worker.py`.
-- [x] **OCR Interface**: `app/services/qwen25_vl.py` is fully implemented, providing binary-to-text and binary-to-bounding-box functionality.
+- [x] **OCR Interface**: `app/services/ocr_query_service.py` is fully implemented, providing binary-to-text and binary-to-bounding-box functionality.
 - [x] **Primary Storage**: Redis-based metadata and blob storage implemented in `app/services/job_storage_service.py`.
 
 ---
@@ -61,9 +61,9 @@ The system operates as a sequential state machine. A job progresses through a st
 - [x] **T3.1: Implement `OcrDocumentCommand`**
   - **Logic**: Check `Job` for unprocessed pages. If found $\rightarrow$ create `OcrPageCommand`. If all processed $\rightarrow$ create `CreateSearchablePdfCommand`.
 - [x] **T3.2: Implement `OcrPageCommand`**
-  - **Logic**: Load image blob $\rightarrow$ Call `qwen25_vl.process_page_with_boxes` $\rightarrow$ Save intermediate result to Redis $\rightarrow$ Create `OcrPageTextOnlyCommand`.
+  - **Logic**: Load image blob $\rightarrow$ Call `ocr_service.process_page_with_boxes` $\rightarrow$ Save intermediate result to Redis $\rightarrow$ Create `OcrPageTextOnlyCommand`.
 - [x] **T3.3: Implement `OcrPageTextOnlyCommand`**
-  - **Logic**: Load image blob $\rightarrow$ Call `qwen25_vl.process_page_without_boxes` $\rightarrow$ Save result to Redis $\rightarrow$ Create `OcrParseResponseCommand`.
+  - **Logic**: Load image blob $\rightarrow$ Call `ocr_service.process_page_without_boxes` $\rightarrow$ Save result to Redis $\rightarrow$ Create `OcrParseResponseCommand`.
 - [x] **T3.4: Implement `OcrParseResponseCommand`**
   - **Logic**: Process raw OCR output into `OcrDocument` structure $\rightarrow$ Save to Redis $\rightarrow$ Create `OcrDocumentCommand` (to check for next page).
 - [x] **T3.5: Implement `CreateSearchablePdfCommand`**

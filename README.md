@@ -8,7 +8,7 @@ The **OCR Engine** provides a local, self-hosted alternative to Azure Document I
 ## Key Features
 
 - **Azure API Emulation**: Full compatibility with the Azure AI READ API specifications.
-- **Advanced OCR Pipeline**: Leverages the **Qwen2.5-VL** model for high-precision text and bounding box extraction.
+- **Advanced OCR Pipeline**: Leverages high-precision Vision-Language models for text and bounding box extraction.
 - **Searchable PDFs**: Automatically generates PDFs with an invisible text layer based on normalized OCR coordinates.
 - **Pagewise Vector Storage**: Stores extracted text and embeddings in **LanceDB**, enabling efficient duplicate detection and cross-document semantic search.
 - **Distributed Architecture**: Decoupled REST API and Worker nodes coordinated via **RabbitMQ**.
@@ -63,13 +63,13 @@ A sequential chain of commands is executed by the worker. If a step fails, an `O
 - **Task Queue**: RabbitMQ (pika)
 - **Caching/Transient State**: Redis
 - **Vector Database**: LanceDB
-- **OCR Model**: Qwen2.5-VL (via Ollama)
+- **OCR Model**: Configurable Vision-Language Model (via Ollama)
 - **PDF Processing**: PyMuPDF, Pillow
 
 ## Getting Started
 
 ### Prerequisites
-- **Ollama**: Installed and running with the `qwen2.5-vl:7B` and `nomic-embed-text` models.
+- **Ollama**: Installed and running with the configured VL and embedding models.
 - **Redis**: Running instance.
 - **RabbitMQ**: Running instance.
 - **Python 3.10+**
@@ -125,7 +125,7 @@ The engine is configured via environment variables. You can find the defaults in
 - `REDIS_HOST` / `REDIS_PORT`: Redis connection details.
 - `RABBITMQ_HOST`: RabbitMQ connection details.
 - `OLLAMA_URL`: URL of your Ollama instance.
-- `OLLAMA_MODEL_VL`: Vision model for OCR (default: `qwen2.5vl:7b`).
+- `OLLAMA_MODEL_VL`: Vision model for OCR (default: `vision-model:latest`).
 - `OLLAMA_MODEL_TEXTEMBED`: Embedding model for vectorization (default: `nomic-embed-text`).
 - `OLLAMA_TIMEOUT`: Timeout for Ollama requests in seconds.
 - `OLLAMA_DPI`: DPI for PDF page rendering.
@@ -146,7 +146,7 @@ ocr_engine/
 ├── docker/                # Docker configuration (Dockerfile, compose.yml)
 ├── test/                  # Unit and integration tests
 ├── requirements.txt       # Python dependencies
-├── setup.ps1/setup.sh     # Environment setup scripts
+├── scripts                # Developments scripts
 ```
 
 ## License

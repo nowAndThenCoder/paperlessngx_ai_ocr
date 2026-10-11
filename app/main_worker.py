@@ -8,28 +8,28 @@ from typing import Any, Dict
 import pika
 from PIL import Image, ImageDraw, ImageFont
 
-from ocr_engine.app.domain.commands import COMMAND_REGISTRY
-from ocr_engine.app.services.config import logging, settings
-from ocr_engine.app.services.job_command_publisher import command_publisher
+from app.domain.commands import COMMAND_REGISTRY
+from app.services.config import logging, settings
+from app.services.job_command_publisher import command_publisher
 
 logger = logging.getLogger(__name__)
 
 
 def generate_test_image_base64(text: str) -> str:
-    """Generiert zur Laufzeit ein valides PNG-Bild als Base64."""
+    """Generates a valid PNG image as Base64 at runtime."""
     text = "Das ist ein Text"
     padding = 5
 
-    # 1. Standard-Schriftart laden
+    # 1. Load default font
     font = ImageFont.load_default()
 
-    # 2. Textgröße berechnen
+    # 2. Calculate text size
     dummy_img = Image.new("RGB", (1, 1))
     draw = ImageDraw.Draw(dummy_img)
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w, text_h = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-    # 3. Canvas mit exakt 5px Padding erstellen
+    # 3. Create canvas with exactly 5px padding
     img_width = int(text_w + (padding * 2))
     img_height = int(text_h + (padding * 2))
 
@@ -37,7 +37,7 @@ def generate_test_image_base64(text: str) -> str:
     draw = ImageDraw.Draw(img)
     draw.text((padding - bbox[0], padding - bbox[1]), text, fill=(0, 0, 0), font=font)
 
-    # 4. Als PNG zu Base64 konvertieren
+    # 4. Convert to PNG and then to Base64
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -46,101 +46,101 @@ def generate_test_image_base64(text: str) -> str:
 class WorkerService:
 
     def run_ocr_startup_self_test(self) -> bool:
-        """Führt eine Test-Inferenz direkt an Ollama aus, um die Qualität zu prüfen."""
-        logger.info("Starte OCR-Self-Test vor Worker-Loop...")
+        """Performs a test inference directly on Ollama to verify quality."""
+        logger.info("Starting OCR self-test before worker loop...")
 
         EXPECTED_TEXT = "Das ist ein Text"
 
         try:
-            from app.services.qwen25_vl import Qwen25VlQuery
+            from app.services.ocr_query_service import OcrQueryService
 
             test_image_base64 = generate_test_image_base64(EXPECTED_TEXT)
             picture_bytes = base64.b64decode(test_image_base64)
-            ocr_service = Qwen25VlQuery()
+            ocr_service = OcrQueryService()
             response_text = ocr_service.process_page_with_boxes(picture_bytes)
-            # 1. Prüfen ob response_text eine Länge größer 0 hat
+            # 1. Check if response_text has length > 0
             if not response_text or len(response_text.strip()) == 0:
-                logger.error("Self-Test FEHLGESCHLAGEN: Inferenz lieferte leeren Response.")
+                logger.error("Self-Test FAILED: Inference returned empty response.")
                 return False
 
             # 2. JSON-Parsing
             try:
                 data = json.loads(response_text.strip())
             except json.JSONDecodeError as e:
-                logger.error(f"Self-Test FEHLGESCHLAGEN: Antwort ist kein JSON ({e}). Content: '{response_text}'")
+                logger.error(f"Self-Test FAILED: Response is not JSON ({e}). Content: '{response_text}'")
                 return False
 
-            # 3. Prüfen ob data eine äußere Liste ist mit genau 1 Unterliste
+            # 3. Check if data is an outer list with exactly 1 inner list
             if not isinstance(data, list) or len(data) != 1:
-                logger.error(f"Self-Test FEHLGESCHLAGEN: Erwartet genau 1 Element im Wurzel-Array, erhalten: {data}")
+                logger.error(f"Self-Test FAILED: Expected exactly 1 element in root array, received: {data}")
                 return False
 
             first_item = data[0]
 
-            # 4. Prüfen ob das innere Element eine Liste mit mindestens 6 Werten ist
+            # 4. Check if the inner element is a list with at least 6 values
             if not isinstance(first_item, list) or len(first_item) < 6:
-                logger.error(f"Self-Test FEHLGESCHLAGEN: Element ist keine Liste mit 6 Werten: {first_item}")
+                logger.error(f"Self-Test FAILED: Element is not a list with 6 values: {first_item}")
                 return False
 
-            # Werte entpacken
+            # Unpack values
             page, ymin, xmin, ymax, xmax, extracted_text = first_item[:6]
 
-            # 5. Text-Vergleich (Case-Sensitive)
+            # 5. Text comparison (Case-Sensitive)
             if extracted_text != EXPECTED_TEXT:
                 logger.error(
-                    f"Self-Test FEHLGESCHLAGEN: Textabweichung. "
-                    f"Erwartet: '{EXPECTED_TEXT}', Erhalten: '{extracted_text}'"
+                    f"Self-Test FAILED: Text mismatch. "
+                    f"Expected: '{EXPECTED_TEXT}', Received: '{extracted_text}'"
                 )
                 return False
 
-            # 6. Bounding-Box Geometrie prüfen
+            # 6. Verify bounding box geometry
             if not (ymin < ymax and xmin < xmax):
                 logger.error(
-                    f"Self-Test FEHLGESCHLAGEN: Bounding-Box Geometrie unlogisch: [{ymin}, {xmin}, {ymax}, {xmax}]"
+                    f"Self-Test FAILED: Bounding box geometry is illogical: [{ymin}, {xmin}, {ymax}, {xmax}]"
                 )
                 return False
 
-            logger.info("OCR-Self-Test ERFOLGREICH. Modell antwortet korrekt.")
+            logger.info("OCR Self-Test SUCCESSFUL. Model is responding correctly.")
             return True
 
         except Exception as e:
-            logger.error(f"Self-Test FEHLGESCHLAGEN: Ausnahme aufgetreten: {e}")
+            logger.error(f"Self-Test FAILED: Exception occurred: {e}")
             return False
 
     def _on_message(self, ch, method, properties, body):
         headers: Dict[str, Any] = properties.headers or {}
         command_type = headers.get("command_type")
 
-        # Early Return + Type-Guard für Pylance (command_type ist ab hier garantiert str)
+        # Early Return + Type-Guard for Pylance (command_type is guaranteed to be str from here)
         if not command_type or not isinstance(command_type, str):
-            logger.error(f"Ungültiger oder fehlender 'command_type'-Header: {command_type}")
+            logger.error(f"Invalid or missing 'command_type' header: {command_type}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
             return
 
         command_cls = COMMAND_REGISTRY.get(command_type)
         if not command_cls:
-            logger.error(f"Unbekannter Command-Typ: {command_type}")
+            logger.error(f"Unknown command type: {command_type}")
             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
             return
 
-        # 1. Sofortiges ACK, um Heartbeat-Timeouts bei langen Inferenz-Aufrufen zu verhindern
+        # 1. Immediate ACK to prevent heartbeat timeouts during long inference calls
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
         try:
             raw_data = json.loads(body)
 
-            # 2. Command-Instanz wiederherstellen
+            # 2. Restore command instance
             command_instance = command_cls(**raw_data)
 
-            # 3. Command führt sich selbst aus
-            logger.info(f"Starte Ausführung für [{command_type}] (Job: {command_instance})")
+            # 3. Command executes itself
+            logger.info(f"Starting execution for [{command_type}] (Job: {command_instance})")
             command_instance.execute()
-            logger.info(f"Erfolgreich abgeschlossen: [{command_type}] (Job: {command_instance})")
+            logger.info(f"Successfully completed: [{command_type}] (Job: {command_instance})")
 
         except Exception as e:
-            logger.error(f"Fehler bei Execution von {command_type}: {e}", exc_info=True)
+            logger.error(f"Error during execution of {command_type}: {e}", exc_info=True)
 
-            # 4. Retry-Count erhöhen & Command erneut publizieren
+            # 4. Increase retry count & republish command
             try:
                 raw_data = json.loads(body)
                 command_instance = command_cls(**raw_data)
@@ -149,23 +149,23 @@ class WorkerService:
                     command_instance.retry_count += 1
 
                 logger.warning(
-                    f"Reiher Task [{command_type}] für Job {command_instance} mit Retry-Count "
-                    f"{getattr(command_instance, 'retry_count', 0)} erneut in die Queue ein."
+                    f"Re-queueing Task [{command_type}] for Job {command_instance} with retry count "
+                    f"{getattr(command_instance, 'retry_count', 0)}."
                 )
                 command_publisher.publish_command(command_instance)
             except Exception as republish_error:
                 logger.error(
-                    f"Konnte fehlgeschlagenen Task [{command_type}] nicht re-publizieren: {republish_error}",
+                    f"Could not republish failed task [{command_type}]: {republish_error}",
                     exc_info=True,
                 )
 
     def start_listening(self):
-        # 1. Startup-Self-Test durchführen
+        # 1. Perform startup self-test
         if not self.run_ocr_startup_self_test():
-            logger.critical("Worker wird aufgrund eines fehlerhaften OCR-Self-Tests NICHT gestartet.")
-            sys.exit(1)  # Bricht den Container/Prozess ab (Docker startet ihn ggf. neu)
+            logger.critical("Worker NOT starting due to failed OCR self-test.")
+            sys.exit(1)  # Terminates the container/process (Docker may restart it)
 
-        # 2. Wenn Test OK -> Verbindung zu RabbitMQ herstellen
+        # 2. If test OK -> establish connection to RabbitMQ
         heartbeat_timeout = getattr(settings, "OLLAMA_TIMEOUT", 300) + 60
         parameters = pika.ConnectionParameters(
             host=settings.RABBITMQ_HOST,
@@ -179,7 +179,7 @@ class WorkerService:
         channel.basic_qos(prefetch_count=1)
         channel.basic_consume(queue="ocr_job_tasks", on_message_callback=self._on_message)
 
-        logger.info("Worker erfolgreich gestartet. Warte auf Commands...")
+        logger.info("Worker started successfully. Waiting for commands...")
         channel.start_consuming()
 
 

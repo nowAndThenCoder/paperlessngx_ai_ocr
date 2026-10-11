@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     RABBITMQ_HOST: str = Field(default="localhost", description="RabbitMQ Hostname / Container Name")
 
     OLLAMA_URL: str = Field(default="http://localhost:11434", description="Ollama API URL")
-    OLLAMA_MODEL_VL: str = Field(default="qwen2.5vl:7b", description="Vision Model used")
+    OLLAMA_MODEL_VL: str = Field(default="vision-model:latest", description="Vision Model used")
     OLLAMA_MODEL_TEXTEMBED: str = Field(default="nomic-embed-text", description="Text Embedding Model used")
     OLLAMA_TIMEOUT: int = Field(default=4800, description="Timeout for Ollama requests in seconds")
     OLLAMA_DPI: int = Field(default=300, description="DPI for PDF page rendering")

@@ -85,7 +85,7 @@ class OcrPageCommand(BaseCommand):
                 logger.error(f"No image bytes found for job {self.job_id} page {self.page_number}")
                 return False
 
-            raw_response = service_provider.qwen_service.process_page_with_boxes(image_bytes)
+            raw_response = service_provider.ocr_service.process_page_with_boxes(image_bytes)
             service_provider.job_storage.save_page_ocr_result(self.job_id, self.page_number, raw_response)
 
             return True
@@ -109,7 +109,7 @@ class OcrPageTextOnlyCommand(BaseCommand):
                 logger.error(f"No image bytes found for job {self.job_id} page {self.page_number}")
                 return False
 
-            raw_text = service_provider.qwen_service.process_page_without_boxes(image_bytes)
+            raw_text = service_provider.ocr_service.process_page_without_boxes(image_bytes)
             service_provider.job_storage.save_page_text(self.job_id, self.page_number, raw_text)
 
             return True
@@ -135,7 +135,7 @@ class OcrParseResponseCommand(BaseCommand):
                 logger.error(f"Missing OCR results for job {self.job_id} page {self.page_number}")
                 return False
 
-            structured_docs = service_provider.qwen_service.parse_ocr_string_to_document(
+            structured_docs = service_provider.ocr_service.parse_ocr_string_to_document(
                 increase_page_ids_by_offset=self.page_number - 1, raw_json_str=raw_boxes
             )
 

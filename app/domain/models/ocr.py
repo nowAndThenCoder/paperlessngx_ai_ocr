@@ -8,7 +8,7 @@ class OcrLine(BaseModel):
     """
     Represents a single line of text extracted from a document page.
     The coordinates are normalized (0-1000) relative to the image dimensions,
-    as provided by the Qwen2.5-VL model.
+    as provided by the Vision-Language model.
     """
 
     text: Optional[str] = None

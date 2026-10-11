@@ -9,7 +9,7 @@ from app.services.ollama_client import ollama_client
 logger = logging.getLogger(__name__)
 
 
-class Qwen25VlQuery:
+class OcrQueryService:
 
     @staticmethod
     def get_prompt_with_boxes() -> str:
@@ -90,9 +90,9 @@ class Qwen25VlQuery:
 
     def parse_ocr_string_to_document(self, increase_page_ids_by_offset: int, raw_json_str: str) -> OcrDocument:
         """
-        Nimmt den komprimierten Qwen-JSON-String Array-in-Array an
-        [[page, ymin, xmin, ymax, xmax, text], ...] und konvertiert ihn
-        in die hierarchische OcrDocument-Struktur.
+        Takes the compressed JSON string in Array-in-Array format
+        [[page, ymin, xmin, ymax, xmax, text], ...] and converts it
+        into the hierarchical OcrDocument structure.
         """
         if not raw_json_str:
             return OcrDocument(pages=None)
@@ -109,7 +109,7 @@ class Qwen25VlQuery:
         pages_dict: Dict[int, List[OcrLine]] = {}
 
         for item in data:
-            # Erwartet das Kompaktformat: [page, ymin, xmin, ymax, xmax, "text"]
+            # Expects the compact format: [page, ymin, xmin, ymax, xmax, "text"]
             if not isinstance(item, list) or len(item) < 6:
                 continue
 
@@ -137,7 +137,7 @@ class Qwen25VlQuery:
                 pages_dict[page_num].append(ocr_line)
 
             except (ValueError, TypeError):
-                # Fängt fehlerhafte/unvollständige Zeilen sicher ab
+                # Safely catches malformed/incomplete lines
                 continue
 
         # construct the ocr_pages as array containing just the orc_lines
@@ -158,7 +158,7 @@ class Qwen25VlQuery:
         self, ocr_doc: Optional[OcrDocument], img_width: int = 1000, img_height: int = 1000
     ) -> Dict[str, Any]:
         """
-        Transformiert das OcrDocuments-Objekt in das Azure AI Read API JSON-Schema.
+        Transforms the OcrDocument object into the Azure AI Read API JSON schema.
         """
         blocks: List[Dict[str, Any]] = []
 
@@ -180,7 +180,7 @@ class Qwen25VlQuery:
                 ymax = line.ymax if line.ymax is not None else ymin + 10
                 xmax = line.xmax if line.xmax is not None else xmin + 10
 
-                # Skalierung von Qwen-Normkoordinaten (0-1000) auf Pixel-Dimensionen
+                # Skalierung von Normkoordinaten (0-1000) auf Pixel-Dimensionen
                 x1 = int(xmin * img_width / 1000)
                 y1 = int(ymin * img_height / 1000)
                 x2 = int(xmax * img_width / 1000)

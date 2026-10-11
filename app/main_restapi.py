@@ -10,7 +10,7 @@ from app.services.config import logging
 from app.domain.models.job import JobStatus
 from app.repositories.job_repository import job_repository
 from app.services.job_dispatcher import JobDispatcher
-from app.services.qwen25_vl import Qwen25VlQuery
+from app.services.ocr_query_service import OcrQueryService
 from app.services.rest_client import rest_client
 from app.services.ollama_client import ollama_client
 from app.services.input_handler import InputHandler
@@ -24,7 +24,7 @@ app = FastAPI(
 )
 
 logger = logging.getLogger(__name__)
-qwen_service = Qwen25VlQuery()
+ocr_service = OcrQueryService()
 job_dispatcher = JobDispatcher()
 input_handler = InputHandler()
 
@@ -88,7 +88,7 @@ async def analyze_document(
 
 @app.get(
     "/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}",
-    summary="Polling-Endpunkt für den Status & das OCR-JSON-Ergebnis",
+    summary="Polling endpoint for status & OCR JSON result",
 )
 async def get_analysis_result(
     model_id: str,
@@ -98,16 +98,16 @@ async def get_analysis_result(
     try:
         parsed_uuid = UUID(job_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Ungültige Job-ID Formatierung: {job_id}")
+        raise HTTPException(status_code=400, detail=f"Invalid Job ID format: {job_id}")
 
     # TODO get job from redis
     from app.repositories.job_repository import job_repository
     job = job_repository.find_by_id(parsed_uuid)
 
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job mit ID {job_id} nicht gefunden.")
+        raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found.")
 
-    # Status: RUNNING oder NOT_STARTED
+    # Status: RUNNING or NOT_STARTED
     if job.status != JobStatus.FAILED and job.status != JobStatus.SUCCEEDED:
         from app.domain.models.job import JobStatus
         job_status_text = job.status.to_friendly_string()
@@ -129,12 +129,12 @@ async def get_analysis_result(
                 "lastUpdatedDateTime": job.updated_at,
                 "error": {
                     "code": "InternalServerError",
-                    "message": getattr(job, "error_message", None) or "Unbekannter Fehler bei der OCR-Verarbeitung.",
+                    "message": getattr(job, "error_message", None) or "Unknown error during OCR processing.",
                 },
             },
         )
     else:
-        # Status: SUCCEEDED -> Azure AI Read JSON zusammenstellen
+        # Status: SUCCEEDED -> Assemble Azure AI Read JSON
         merged_docs = OcrDocuments(pages=[])
         for page in job.source_pages or []:
             if page.ocr_page_result:
@@ -144,7 +144,7 @@ async def get_analysis_result(
         width = int(first_page.page_width) if first_page else 1000
         height = int(first_page.page_height) if first_page else 1000
 
-        analyze_result = qwen_service.convert_ocr_documents_to_azure_json(
+        analyze_result = ocr_service.convert_ocr_documents_to_azure_json(
             merged_docs, img_width=width, img_height=height
         )
 
@@ -161,30 +161,30 @@ async def get_analysis_result(
 
 @app.get(
     "/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}/pdf",
-    summary="Download der verarbeiteten PDF-Datei",
+    summary="Download of the processed PDF file",
 )
 async def get_analyze_result_pdf(
     model_id: str,
     job_id: str,
     api_version: str = Query("2023-07-31", alias="api-version"),
 ):
-    """Download-Endpunkt für das erzeugte durchsuchbare PDF (sobald CreatePdfTask fertig ist)."""
+    """Download endpoint for the generated searchable PDF (once CreatePdfTask is complete)."""
     try:
         parsed_uuid = UUID(job_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Ungültige Job-ID Formatierung: {job_id}")
+        raise HTTPException(status_code=400, detail=f"Invalid Job ID format: {job_id}")
 
     job = job_repository.get_by_id(parsed_uuid)
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} nicht gefunden.")
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 
     if job.status != JobStatus.SUCCEEDED:
         raise HTTPException(
             status_code=400,
-            detail=f"Job {job_id} ist noch nicht fertig (Aktueller Status: {job.status.value}).",
+            detail=f"Job {job_id} is not yet complete (Current status: {job.status.value}).",
         )
 
-    # Greift bevorzugt auf das in Schritt 3 generierte final_pdf_bytes zu, sonst Fallback
+    # Prefers final_pdf_bytes generated in step 3, otherwise fallback
     # pdf_bytes = job.final_pdf_bytes or (
     #    job.source_pages[0].page_bytes if job.source_pages and job.source_pages[0].page_bytes else None
     # )
@@ -192,7 +192,7 @@ async def get_analyze_result_pdf(
     pdf_bytes = None
 
     if not pdf_bytes:
-        raise HTTPException(status_code=404, detail="Keine PDF-Bytes für diesen Job vorhanden.")
+        raise HTTPException(status_code=404, detail="No PDF bytes available for this job.")
 
     return Response(
         content=pdf_bytes,
