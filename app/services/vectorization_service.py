@@ -3,6 +3,7 @@ import logging
 from typing import List
 
 from .rest_client import RestClient
+from .ollama_client import OllamaClient
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,9 @@ class VectorizationService:
     Bridges extracted text to embeddings for vector search in LanceDB.
     """
 
-    def __init__(self, rest_client: RestClient):
+    def __init__(self, rest_client: RestClient, ollama_client: OllamaClient):
         self.rest_client = rest_client
+        self.ollama_client = ollama_client
 
     def vectorize_text(self, text: str) -> List[float]:
         """
@@ -27,7 +29,7 @@ class VectorizationService:
             A list of floats representing the vector embedding.
         """
         try:
-            embeddings = self.rest_client.post_ollama_embeddings(text)
+            embeddings = self.ollama_client.post_embeddings(text)
             if not embeddings:
                 logger.warning(f"Ollama returned empty embeddings for text: {text[:50]}...")
             return embeddings

@@ -6,6 +6,7 @@ from app.services.qwen25_vl import Qwen25VlQuery
 from app.services.vectorization_service import VectorizationService
 from app.services.lancedb_service import LanceDbService
 from app.services.rest_client import rest_client
+from app.services.ollama_client import ollama_client
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ class ServiceProvider:
         self.job_storage = job_storage_service
         self.qwen_service = Qwen25VlQuery()
         self.pdf_service = PdfService()
-        self.vector_service = VectorizationService(rest_client)
+        self.vector_service = VectorizationService(rest_client, ollama_client)
         self.lancedb_service = LanceDbService()
 
 # Singleton instance for the application

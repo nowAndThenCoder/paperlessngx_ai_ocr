@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from app.domain.models.ocr import OcrDocument, OcrLine, OcrPage
 from app.services.config import logging
-from app.services.rest_client import rest_client
+from app.services.ollama_client import ollama_client
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class Qwen25VlQuery:
     def process_page_with_boxes(self, image_bytes: bytes) -> str:
         logger.info(f"processing started")
         prompt = self.get_prompt_with_boxes()
-        response = rest_client.post_ollama_generate(image_bytes, prompt)
+        response = ollama_client.post_generate(image_bytes, prompt)
         sanitized_response = self.sanitize_response(response)
         logger.info(f"processing finished")
         return sanitized_response
@@ -83,7 +83,7 @@ class Qwen25VlQuery:
     def process_page_without_boxes(self, image_bytes: bytes) -> str:
         logger.info(f"processing started")
         prompt = self.get_prompt_without_boxes()
-        response = rest_client.post_ollama_generate(image_bytes, prompt)
+        response = ollama_client.post_generate(image_bytes, prompt)
         sanitized_response = self.sanitize_response(response)
         logger.info(f"processing finished")
         return sanitized_response

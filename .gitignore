@@ -20,7 +20,7 @@ scripts/set_env.ps1
 
 # Test directory and temporary test files
 test/data/
-test/test.py
+test/test_resources.py
 
 # OS generated files
 .DS_Store

@@ -1,6 +1,6 @@
 FROM python:3.14-slim
 
-# System dependencies for C-Extensions (e.g. PyMuPDF/fitz & LanceDB base)
+# System dependencies for C-Extensions (e.g. PyMuPDF & LanceDB base)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libmupdf-dev \

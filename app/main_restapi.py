@@ -1,4 +1,5 @@
 from typing import Optional
+import time
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
@@ -11,6 +12,9 @@ from app.repositories.job_repository import job_repository
 from app.services.job_dispatcher import JobDispatcher
 from app.services.qwen25_vl import Qwen25VlQuery
 from app.services.rest_client import rest_client
+from app.services.ollama_client import ollama_client
+from app.services.input_handler import InputHandler
+from app.domain.commands import OcrDocumentCommand
 
 app = FastAPI(
     title="OCR Engine REST API (Azure Document Intelligence Mock)",
@@ -22,6 +26,7 @@ app = FastAPI(
 logger = logging.getLogger(__name__)
 qwen_service = Qwen25VlQuery()
 job_dispatcher = JobDispatcher()
+input_handler = InputHandler()
 
 
 @app.post(
@@ -40,7 +45,25 @@ async def analyze_document(
         file_bytes = rest_client.fetch_file_bytes_from_request(content_type or "", body_bytes)
         file_type = rest_client.get_file_type_of_bytes(file_bytes)
 
-        # TODO add persistence
+        # 1. Split file into pages and persist the Job
+        pages = input_handler.split_file(file_bytes, file_type)
+        if not pages:
+            raise HTTPException(status_code=400, detail="Could not parse file into pages.")
+
+        # Create and save the job entity
+        job = job_repository.create_job(
+            file_type=file_type, 
+            total_pages=len(pages), 
+            file_name=f"upload_{int(time.time())}"
+        )
+        
+        # Save page images to storage
+        for page_num, page_bytes in pages:
+            job_repository.save_page_image(job.job_id, page_num, page_bytes)
+
+        # 2. Start the pipeline by dispatching the first command
+        first_command = OcrDocumentCommand(job_id=job.job_id)
+        job_dispatcher.dispatch(first_command)
 
         # create polling URL
         # Note: In a real scenario, we'd first create the job and get its ID.

@@ -2,7 +2,7 @@
 import io
 from typing import List, Tuple
 
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 from PIL import Image
 
 from app.domain.models.job import FileType

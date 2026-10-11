@@ -2,7 +2,7 @@
 from typing import List
 from uuid import UUID
 
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 
 from app.domain.models.job import Job
 from app.domain.models.ocr import OcrDocument
