@@ -1,0 +1,55 @@
+services:
+  redis:
+    image: redis:8
+    container_name: ocr_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=meinpasswort
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    
+  ocr_api:
+    image: registry.deine-domain.de/ocr-engine:latest
+    container_name: ocr_api
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - REDIS_HOST=ocr_redis
+      - REDIS_PORT=6379
+      - OLLAMA_URL=http://192.168.1.12:11434
+      - OLLAMA_MODEL_VL=qwen2.5vl:7b
+      - LOG_LEVEL=INFO
+    depends_on:
+      - redis
+      - rabbitmq
+    command: uvicorn app.main_restapi:app --host 0.0.0.0 --port 5000
+
+  ocr_worker:
+    image: registry.deine-domain.de/ocr-engine:latest
+    container_name: ocr_worker
+    restart: unless-stopped
+    environment:
+      - REDIS_HOST=ocr_redis
+      - REDIS_PORT=6379
+      - OLLAMA_URL=http://192.168.1.12:11434
+      - OLLAMA_MODEL_VL=qwen2.5vl:7b
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - redis
+      - rabbitmq
+    command: python -m app.main_worker
+
+volumes:
+  rabbitmq_data:
+  redis_data:
