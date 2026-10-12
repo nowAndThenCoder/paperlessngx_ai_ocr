@@ -1,0 +1,49 @@
+services:
+  broker:
+    image: redis:alpine
+    restart: unless-stopped
+    networks:
+      - paperless
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    networks:
+      - paperless
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: paperless
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - broker
+    volumes:
+      - paperless:/usr/src/paperless/data
+      - /opt/paperless/media:/usr/src/paperless/media
+      - /opt/paperless/consume:/usr/src/paperless/consume
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBHOST: db
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: paperless
+      PAPERLESS_SECRET_KEY: "change-me-to-a-secure-secret-key"
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: admin
+    networks:
+      - paperless
+
+volumes:
+  postgres:
+  paperless:
+
+networks:
+  paperless:
+    external: false
