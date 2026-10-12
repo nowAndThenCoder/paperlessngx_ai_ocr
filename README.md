@@ -55,7 +55,7 @@ A sequential chain of commands is executed by the worker. If a step fails, an `O
 
 ### Output Requirements
 - **Searchable PDF**: Generation of a PDF with a text layer based on OCR coordinates.
-- **Text Augmentation**: Every extracted page must append a tracking string: `"\n\nOCR JobID: {UUID}"` to facilitate search in Paperless-NGX.
+- **Text Augmentation**: Every extracted document must append a tracking string: `"\n\nOCR JobID: {UUID}"` to facilitate search in Paperless-NGX.
 - **Integration**: Specifically designed to be triggered by and integrate with Paperless-NGX.
 
 ## Tech Stack
