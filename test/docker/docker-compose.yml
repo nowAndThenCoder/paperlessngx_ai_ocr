@@ -33,7 +33,9 @@ services:
       PAPERLESS_SECRET_KEY: "change-me-to-a-secure-secret-key"
       PAPERLESS_ADMIN_USER: admin
       PAPERLESS_ADMIN_PASSWORD: admin
-
+      PAPERLESS_REMOTE_OCR_ENGINE: azureai
+      PAPERLESS_REMOTE_OCR_ENDPOINT: http://localhost:5000
+      PAPERLESS_REMOTE_OCR_MODE: always
 volumes:
   postgres:
   paperless:
