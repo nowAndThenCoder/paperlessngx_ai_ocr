@@ -16,6 +16,22 @@ class JobRepository:
         """Persists the current job state back into Redis."""
         job_storage_service.save_job_meta(job.job_id, job.to_dict())
 
+    def create_job(self, file_type: str, total_pages: int, file_name: str) -> Job:
+        """
+        Creates a new Job entity, initializes its state and persists it.
+        """
+        import uuid
+        job_id = uuid.uuid4()
+        job = Job(job_id=job_id, file_type=file_type)
+        job.total_pages = total_pages
+        # Note: file_name could be added to Job model if needed, currently not in model.
+        self.save(job)
+        return job
+
+    def save_page_image(self, job_id: UUID, page_num: int, image_bytes: bytes) -> None:
+        """Persists a raw image blob for a specific page."""
+        job_storage_service.save_page_image(job_id, page_num, image_bytes)
+
     def find_by_id(self, job_id: UUID) -> Optional[Job]:
         """
         Retrieves a Job instance by its ID.

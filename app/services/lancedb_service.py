@@ -3,7 +3,7 @@ from typing import List, Optional
 from uuid import UUID
 
 import lancedb
-from lancedb import EmbeddingFunction
+from lancedb.embeddings import EmbeddingFunction
 
 from .config import settings
 

@@ -66,10 +66,7 @@ async def analyze_document(
         job_dispatcher.dispatch(first_command)
 
         # create polling URL
-        # Note: In a real scenario, we'd first create the job and get its ID.
-        # For this mock, we generate a temporary UUID to simulate the process.
-        import uuid
-        job_id = uuid.uuid4()
+        job_id = job.job_id
         base_url = str(request.base_url).rstrip("/")
         polling_url = f"{base_url}/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}?api-version={api_version}"
 
@@ -109,7 +106,6 @@ async def get_analysis_result(
 
     # Status: RUNNING or NOT_STARTED
     if job.status != JobStatus.FAILED and job.status != JobStatus.SUCCEEDED:
-        from app.domain.models.job import JobStatus
         job_status_text = job.status.to_friendly_string()
         return JSONResponse(
             status_code=200,
@@ -174,7 +170,7 @@ async def get_analyze_result_pdf(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid Job ID format: {job_id}")
 
-    job = job_repository.get_by_id(parsed_uuid)
+    job = job_repository.find_by_id(parsed_uuid)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
 

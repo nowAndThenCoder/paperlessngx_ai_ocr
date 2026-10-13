@@ -77,6 +77,21 @@ class JobStorageService:
         """Retrieves the text-only OCR result for a specific page."""
         return self.client.get(self._page_text_key(job_id, page_number))
 
+    def save_page_embeddings(self, job_id: UUID, page_number: int, embeddings: list[float]) -> None:
+        """Saves vector embeddings for a specific page."""
+        # Store as JSON string
+        self.client.set(f"job:{job_id}:embeddings:{page_number}", json.dumps(embeddings))
+
+    def get_page_embeddings(self, job_id: UUID, page_number: int) -> Optional[list[float]]:
+        """Retrieves vector embeddings for a specific page."""
+        data = self.client.get(f"job:{job_id}:embeddings:{page_number}")
+        return json.loads(data) if data else None
+
+    def get_now_iso(self) -> str:
+        """Returns current UTC time in ISO format."""
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).isoformat()
+
     # --- Final Output ---
     def save_final_pdf(self, job_id: UUID, pdf_bytes: bytes) -> None:
         """Saves the final searchable PDF."""

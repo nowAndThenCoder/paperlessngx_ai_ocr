@@ -238,7 +238,7 @@ class PersistLanceDbCommand(BaseCommand):
             lancedb_service = service_provider.lancedb_service
 
             for page_num in range(1, job.total_pages + 1):
-                result_data = service_provider.job_storage.get_page_result(self.job_id, page_num)
+                result_data = service_provider.job_storage.get_page_ocr_result(self.job_id, page_num)
                 if not result_data:
                     continue
 

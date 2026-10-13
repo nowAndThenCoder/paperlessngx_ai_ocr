@@ -1,4 +1,5 @@
 import logging
+from app.domain.commands import BaseCommand
 from app.services.job_command_publisher import command_publisher
 
 logger = logging.getLogger(__name__)
@@ -9,7 +10,7 @@ class JobDispatcher:
     the initial command to the queue.
     """
 
-    def dispatch_job(self, command) -> None:
+    def dispatch(self, command: BaseCommand) -> None:
         """
         Sends the initial command to the RabbitMQ queue.
         """
