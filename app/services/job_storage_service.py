@@ -3,7 +3,10 @@ import json
 from typing import Any, Dict, Optional, cast
 from uuid import UUID
 
+from app.services.config import logging
 from app.services.redis_client import redis_client
+
+logger = logging.getLogger(__name__)
 
 
 class JobStorageService:
@@ -42,10 +45,42 @@ class JobStorageService:
         data = self.client.get(self._meta_key(job_id))
         return json.loads(data) if data else None
 
-    def update_job_meta(self, job_id: UUID, updates: Dict[str, Any]) -> None:
-        """Updates specific fields in the job metadata."""
-        meta = self.get_job_meta(job_id) or {}
-        meta.update(updates)
+    def get_status(self, job_id: UUID) -> Optional[int]:
+        """Returns the status of the last history entry."""
+        meta = self.get_job_meta(job_id)
+        if not meta:
+            return None
+        return meta.get("status")
+
+    def reset_status(self, job_id: UUID, previous_status: int) -> None:
+        """
+        Resets the status to a previous value. 
+        Adds a history entry to mark the rollback.
+        """
+        self.add_job_history_entry(job_id, previous_status, "Status reset after failure")
+
+    def add_job_history_entry(self, job_id: UUID, status: Any, message: str = "") -> None:
+        """
+        Adds a status entry to the job history and updates the current status.
+        Ensures the record is created if it doesn't exist.
+        """
+        meta = self.get_job_meta(job_id)
+        if meta is None:
+            meta = {"job_id": str(job_id), "history": []}
+        
+        if "history" not in meta or not isinstance(meta["history"], list):
+            meta["history"] = []
+
+        entry = {
+            "timestamp": self.get_now_iso(),
+            "status": status if isinstance(status, int) else status.value,
+            "message": message
+        }
+        
+        meta["history"].append(entry)
+        meta["status"] = entry["status"]
+        meta["updated_at"] = entry["timestamp"]
+        
         self.save_job_meta(job_id, meta)
 
     # --- Page Blobs (Input Images) ---

@@ -50,15 +50,22 @@ async def analyze_document(
         if not pages:
             raise HTTPException(status_code=400, detail="Could not parse file into pages.")
 
-        # Create and save the job entity
+        # Prepare metadata for source pages (dimensions) to be stored in Job meta
+        source_pages_meta = [
+            {"page_num": p[0], "width": p[2], "height": p[3]} 
+            for p in pages
+        ]
+
+        # Create and save the job entity with source pages meta
         job = job_repository.create_job(
             file_type=file_type, 
             total_pages=len(pages), 
-            file_name=f"upload_{int(time.time())}"
+            file_name=f"upload_{int(time.time())}",
+            source_pages_data=source_pages_meta
         )
         
         # Save page images to storage
-        for page_num, page_bytes in pages:
+        for page_num, page_bytes, _, _ in pages:
             job_repository.save_page_image(job.job_id, page_num, page_bytes)
 
         # 2. Start the pipeline by dispatching the first command

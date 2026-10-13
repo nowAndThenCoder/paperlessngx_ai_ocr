@@ -28,7 +28,7 @@ class PdfService:
         doc = fitz.open()
 
         if not job.source_pages:
-            return b""
+            raise ValueError("No source pages metadata found in Job. Cannot generate PDF.")
 
         for physical_page in job.source_pages:
             # We expect each physical page to have its OCR results already populated
@@ -36,11 +36,11 @@ class PdfService:
             if physical_page.ocr_page_result is None:
                 # If OCR results are missing for a page, we still add the image
                 # but without a text layer.
-                page = self._create_pdf_page(physical_page, None)
-                doc.insert_pdf_page(page)
+                page_doc = self._create_pdf_page(physical_page, None)
+                doc.insert_pdf(page_doc)
             else:
-                page = self._create_pdf_page(physical_page, physical_page.ocr_page_result)
-                doc.insert_pdf_page(page)
+                page_doc = self._create_pdf_page(physical_page, physical_page.ocr_page_result)
+                doc.insert_pdf(page_doc)
 
         # Save to bytes
         pdf_bytes = doc.tobytes()

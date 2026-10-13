@@ -17,3 +17,4 @@ __pycache__/
 docker/
 scripts/
 test/
+lancedb_data/

@@ -22,11 +22,15 @@ class BaseCommand(BaseModel, ABC):
         """
         return service_provider.job_storage.get_job_meta(self.job_id)
 
-    def update_job_meta(self, updates: Dict[str, Any]) -> None:
+    def log_status(self, status: JobStatus, message: str = "") -> None:
         """
-        Updates job metadata in Redis.
+        Logs a status change to the job history in Redis.
         """
-        service_provider.job_storage.update_job_meta(self.job_id, updates)
+        service_provider.job_storage.add_job_history_entry(self.job_id, status, message)
+
+    def get_current_status(self) -> Optional[int]:
+        """Retrieves the current status from the history log."""
+        return service_provider.job_storage.get_status(self.job_id)
 
     @abstractmethod
     def execute(self) -> bool:
@@ -80,7 +84,7 @@ class OcrPageCommand(BaseCommand):
     def execute(self) -> bool:
         """Performs OCR on a single physical page with bounding boxes."""
         try:
-            self.update_job_meta({"status": JobStatus.OCR_RUNNING})
+            self.log_status(JobStatus.OCR_RUNNING)
             image_bytes = service_provider.job_storage.get_page_image(self.job_id, self.page_number)
             if not image_bytes:
                 logger.error(f"No image bytes found for job {self.job_id} page {self.page_number}")
@@ -105,7 +109,7 @@ class OcrPageTextOnlyCommand(BaseCommand):
     def execute(self) -> bool:
         """Performs text-only OCR on a single physical page."""
         try:
-            self.update_job_meta({"status": JobStatus.OCR_RUNNING_TEXT_ONLY})
+            self.log_status(JobStatus.OCR_RUNNING_TEXT_ONLY)
             image_bytes = service_provider.job_storage.get_page_image(self.job_id, self.page_number)
             if not image_bytes:
                 logger.error(f"No image bytes found for job {self.job_id} page {self.page_number}")
@@ -130,7 +134,7 @@ class OcrParseResponseCommand(BaseCommand):
     def execute(self) -> bool:
         """Processes raw OCR outputs for a single page into structured OcrDocuments."""
         try:
-            self.update_job_meta({"status": JobStatus.OCR_PARSING})
+            self.log_status(JobStatus.OCR_PARSING)
             raw_boxes = service_provider.job_storage.get_page_ocr_result(self.job_id, self.page_number)
             raw_text = service_provider.job_storage.get_page_text(self.job_id, self.page_number)
 
@@ -166,7 +170,7 @@ class CreateSearchablePdfCommand(BaseCommand):
         Generates a searchable PDF for the entire document using aggregated OCR results.
         """
         try:
-            self.update_job_meta({"status": JobStatus.PDF_CREATION})
+            self.log_status(JobStatus.PDF_CREATION)
             job = service_provider.job_repository.find_by_id(self.job_id)
             if not job:
                 logger.error(f"Job {self.job_id} not found for PDF generation")
@@ -174,13 +178,24 @@ class CreateSearchablePdfCommand(BaseCommand):
 
             pdf_bytes = service_provider.pdf_service.generate_searchable_pdf(job)
             if not pdf_bytes:
-                logger.error(f"PDF generation failed for job {self.job_id}")
+                # This should now be handled by the exception block above if ValueError is raised
+                logger.error(f"PDF generation returned empty result for job {self.job_id}")
                 return False
 
             service_provider.job_storage.save_final_pdf(self.job_id, pdf_bytes)
+            
+            # Export PDF to local file for debugging/verification
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{self.job_id}_{timestamp}.pdf"
+            with open(filename, "wb") as f:
+                f.write(pdf_bytes)
+            logger.info(f"PDF exported to local file: {filename}")
+
             return True
         except Exception as e:
             logger.error(f"Exception during CreateSearchablePdfCommand for job {self.job_id}: {e}")
+            self.log_status(JobStatus.FAILED, f"PDF generation error: {str(e)}")
             raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
@@ -196,7 +211,7 @@ class VectorizeCommand(BaseCommand):
         Generates vector embeddings for all pages of the document.
         """
         try:
-            self.update_job_meta({"status": JobStatus.VECTORIZING})
+            self.log_status(JobStatus.VECTORIZING)
             job = service_provider.job_repository.find_by_id(self.job_id)
             if not job:
                 logger.error(f"Job {self.job_id} not found for vectorization")
@@ -235,7 +250,7 @@ class PersistLanceDbCommand(BaseCommand):
         Moves extracted text and embeddings from Redis to permanent storage in LanceDB.
         """
         try:
-            self.update_job_meta({"status": JobStatus.PERSISTING_LANCEDB})
+            self.log_status(JobStatus.PERSISTING_LANCEDB)
             job = service_provider.job_repository.find_by_id(self.job_id)
             if not job:
                 logger.error(f"Job {self.job_id} not found for persistence")
@@ -284,7 +299,7 @@ class OcrDocumentSucceededCommand(BaseCommand):
         1. Update JobStatus to SUCCEEDED in Redis.
         2. Log completion timestamp.
         """
-        self.update_job_meta({"status": JobStatus.SUCCEEDED, "completed_at": service_provider.job_storage.get_now_iso()})
+        self.log_status(JobStatus.SUCCEEDED, f"Job completed at {service_provider.job_storage.get_now_iso()}")
         return True
 
     def create_next_command(self) -> Optional["BaseCommand"]:
@@ -303,7 +318,7 @@ class OcrDocumentFailedCommand(BaseCommand):
         2. Store the error message.
         3. Log completion timestamp.
         """
-        self.update_job_meta({"status": JobStatus.FAILED, "error": self.error_message, "completed_at": service_provider.job_storage.get_now_iso()})
+        self.log_status(JobStatus.FAILED, f"Error: {self.error_message}. Completed at {service_provider.job_storage.get_now_iso()}")
         return True
 
     def create_next_command(self) -> Optional["BaseCommand"]:

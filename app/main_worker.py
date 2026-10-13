@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from app.domain.commands import COMMAND_REGISTRY
 from app.services.config import logging, settings
 from app.services.job_command_publisher import command_publisher
+from app.services.service_provider import service_provider
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,9 @@ class WorkerService:
 
             # 2. Restore command instance
             command_instance = command_cls(**raw_data)
+            
+            # Store current status for recovery in case of failure
+            initial_status = command_instance.get_current_status()
 
             # 3. Command executes itself
             logger.info(f"Starting execution for [{command_type}] (Job: {command_instance})")
@@ -156,6 +160,11 @@ class WorkerService:
                 root_cause = e.__cause__
             
             logger.error(f"Error during execution of {command_type}: {root_cause}", exc_info=True)
+
+            # Restore status to the state before this command started
+            if 'initial_status' in locals() and initial_status is not None:
+                logger.info(f"Resetting status for job {command_instance.job_id} to {initial_status}")
+                service_provider.job_storage.reset_status(command_instance.job_id, initial_status)
 
             # Move the original command to the error queue immediately upon failure
             try:

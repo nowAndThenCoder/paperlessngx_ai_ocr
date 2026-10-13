@@ -19,6 +19,7 @@ docker/.env
 scripts/set_env.ps1
 
 # Test directory and temporary test files
+lancedb_data/
 test/data/
 test/test_resources.py
 
