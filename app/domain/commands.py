@@ -53,9 +53,9 @@ class OcrDocumentCommand(BaseCommand):
                     return True
 
             return True
-        except Exception:
-            logger.exception(f"Failed to execute OcrDocumentCommand for job {self.job_id}")
-            return False
+        except Exception as e:
+            logger.error(f"Failed to execute OcrDocumentCommand for job {self.job_id}: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """Determines the next step in the pipeline."""
@@ -69,9 +69,9 @@ class OcrDocumentCommand(BaseCommand):
                     return OcrPageCommand(job_id=self.job_id, page_number=page_number)
 
             return CreateSearchablePdfCommand(job_id=self.job_id)
-        except Exception:
-            logger.exception(f"Failed to determine next command for job {self.job_id}")
-            return None
+        except Exception as e:
+            logger.error(f"Failed to determine next command for job {self.job_id}: {e}")
+            raise e
 
 
 class OcrPageCommand(BaseCommand):
@@ -80,6 +80,7 @@ class OcrPageCommand(BaseCommand):
     def execute(self) -> bool:
         """Performs OCR on a single physical page with bounding boxes."""
         try:
+            self.update_job_meta({"status": JobStatus.OCR_RUNNING})
             image_bytes = service_provider.job_storage.get_page_image(self.job_id, self.page_number)
             if not image_bytes:
                 logger.error(f"No image bytes found for job {self.job_id} page {self.page_number}")
@@ -89,9 +90,9 @@ class OcrPageCommand(BaseCommand):
             service_provider.job_storage.save_page_ocr_result(self.job_id, self.page_number, raw_response)
 
             return True
-        except Exception:
-            logger.exception(f"Failed to execute OcrPageCommand for job {self.job_id} page {self.page_number}")
-            return False
+        except Exception as e:
+            logger.error(f"Failed to execute OcrPageCommand for job {self.job_id} page {self.page_number}: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """Transitions to text-only OCR for the same page."""
@@ -104,6 +105,7 @@ class OcrPageTextOnlyCommand(BaseCommand):
     def execute(self) -> bool:
         """Performs text-only OCR on a single physical page."""
         try:
+            self.update_job_meta({"status": JobStatus.OCR_RUNNING_TEXT_ONLY})
             image_bytes = service_provider.job_storage.get_page_image(self.job_id, self.page_number)
             if not image_bytes:
                 logger.error(f"No image bytes found for job {self.job_id} page {self.page_number}")
@@ -113,9 +115,9 @@ class OcrPageTextOnlyCommand(BaseCommand):
             service_provider.job_storage.save_page_text(self.job_id, self.page_number, raw_text)
 
             return True
-        except Exception:
-            logger.exception(f"Failed to execute OcrPageTextOnlyCommand for job {self.job_id} page {self.page_number}")
-            return False
+        except Exception as e:
+            logger.error(f"Failed to execute OcrPageTextOnlyCommand for job {self.job_id} page {self.page_number}: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """Transitions to the parsing phase for the same page."""
@@ -128,6 +130,7 @@ class OcrParseResponseCommand(BaseCommand):
     def execute(self) -> bool:
         """Processes raw OCR outputs for a single page into structured OcrDocuments."""
         try:
+            self.update_job_meta({"status": JobStatus.OCR_PARSING})
             raw_boxes = service_provider.job_storage.get_page_ocr_result(self.job_id, self.page_number)
             raw_text = service_provider.job_storage.get_page_text(self.job_id, self.page_number)
 
@@ -139,7 +142,7 @@ class OcrParseResponseCommand(BaseCommand):
                 increase_page_ids_by_offset=self.page_number - 1, raw_json_str=raw_boxes
             )
 
-            text_parts = raw_text.split("=== DOCUMENT_BREAK ===")
+            text_parts = raw_text.decode("utf-8").split("=== DOCUMENT_BREAK ===") if isinstance(raw_text, bytes) else raw_text.split("=== DOCUMENT_BREAK ===")
 
             if structured_docs.pages:
                 for i, page in enumerate(structured_docs.pages):
@@ -148,9 +151,9 @@ class OcrParseResponseCommand(BaseCommand):
             service_provider.job_storage.save_page_ocr_result(self.job_id, self.page_number, structured_docs.model_dump())
 
             return True
-        except Exception:
-            logger.exception(f"Failed to execute OcrParseResponseCommand for job {self.job_id} page {self.page_number}")
-            return False
+        except Exception as e:
+            logger.error(f"Failed to execute OcrParseResponseCommand for job {self.job_id} page {self.page_number}: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """Transitions back to OcrDocumentCommand to check for the next page."""
@@ -163,6 +166,7 @@ class CreateSearchablePdfCommand(BaseCommand):
         Generates a searchable PDF for the entire document using aggregated OCR results.
         """
         try:
+            self.update_job_meta({"status": JobStatus.PDF_CREATION})
             job = service_provider.job_repository.find_by_id(self.job_id)
             if not job:
                 logger.error(f"Job {self.job_id} not found for PDF generation")
@@ -175,9 +179,9 @@ class CreateSearchablePdfCommand(BaseCommand):
 
             service_provider.job_storage.save_final_pdf(self.job_id, pdf_bytes)
             return True
-        except Exception:
-            logger.exception(f"Exception during CreateSearchablePdfCommand for job {self.job_id}")
-            return False
+        except Exception as e:
+            logger.error(f"Exception during CreateSearchablePdfCommand for job {self.job_id}: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """
@@ -192,6 +196,7 @@ class VectorizeCommand(BaseCommand):
         Generates vector embeddings for all pages of the document.
         """
         try:
+            self.update_job_meta({"status": JobStatus.VECTORIZING})
             job = service_provider.job_repository.find_by_id(self.job_id)
             if not job:
                 logger.error(f"Job {self.job_id} not found for vectorization")
@@ -215,9 +220,9 @@ class VectorizeCommand(BaseCommand):
                 service_provider.job_storage.save_page_embeddings(self.job_id, page_num, embeddings)
 
             return True
-        except Exception:
-            logger.exception(f"Failed to vectorize job {self.job_id}")
-            return False
+        except Exception as e:
+            logger.error(f"Failed to vectorize job {self.job_id}: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """Transitions to the final persistence phase."""
@@ -230,6 +235,7 @@ class PersistLanceDbCommand(BaseCommand):
         Moves extracted text and embeddings from Redis to permanent storage in LanceDB.
         """
         try:
+            self.update_job_meta({"status": JobStatus.PERSISTING_LANCEDB})
             job = service_provider.job_repository.find_by_id(self.job_id)
             if not job:
                 logger.error(f"Job {self.job_id} not found for persistence")
@@ -258,9 +264,9 @@ class PersistLanceDbCommand(BaseCommand):
                 )
 
             return True
-        except Exception:
-            logger.exception(f"Failed to persist job {self.job_id} to LanceDB")
-            return False
+        except Exception as e:
+            logger.error(f"Failed to persist job {self.job_id} to LanceDB: {e}")
+            raise e
 
     def create_next_command(self) -> Optional["BaseCommand"]:
         """

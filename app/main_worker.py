@@ -134,30 +134,73 @@ class WorkerService:
 
             # 3. Command executes itself
             logger.info(f"Starting execution for [{command_type}] (Job: {command_instance})")
-            command_instance.execute()
+            success = command_instance.execute()
+
+            if not success:
+                raise RuntimeError(f"Command {command_type} execution failed (returned False)")
+
             logger.info(f"Successfully completed: [{command_type}] (Job: {command_instance})")
 
+            # 4. Dispatch next command in pipeline
+            next_command = command_instance.create_next_command()
+            if next_command:
+                logger.info(f"Dispatching next command: [{next_command.__class__.__name__}] for job {next_command.job_id}")
+                command_publisher.publish_command(next_command)
+            else:
+                logger.info(f"Pipeline finished for job {command_instance.job_id}")
+
         except Exception as e:
-            logger.error(f"Error during execution of {command_type}: {e}", exc_info=True)
+            # Extract the root cause if it's a wrapped exception (like RuntimeError from 'if not success')
+            root_cause = e
+            if isinstance(e, RuntimeError) and e.__cause__:
+                root_cause = e.__cause__
+            
+            logger.error(f"Error during execution of {command_type}: {root_cause}", exc_info=True)
 
-            # 4. Increase retry count & republish command
+            # Move the original command to the error queue immediately upon failure
             try:
-                raw_data = json.loads(body)
-                command_instance = command_cls(**raw_data)
-
-                if hasattr(command_instance, "retry_count"):
-                    command_instance.retry_count += 1
-
-                logger.warning(
-                    f"Re-queueing Task [{command_type}] for Job {command_instance} with retry count "
-                    f"{getattr(command_instance, 'retry_count', 0)}."
+                # We use the command_instance created at the start of the try block
+                logger.error(f"Sending failed command [{command_type}] (Job: {command_instance.job_id}) to error queue.")
+                command_publisher.publish_command(
+                    command_instance, 
+                    queue_name=settings.RABBITMQ_ERROR_QUEUE_NAME
                 )
-                command_publisher.publish_command(command_instance)
             except Exception as republish_error:
                 logger.error(
-                    f"Could not republish failed task [{command_type}]: {republish_error}",
+                    f"Could not move failed task [{command_type}] to error queue: {republish_error}",
                     exc_info=True,
                 )
+
+    def recover_failed_jobs(self, channel):
+        """
+        Moves all messages from the error queue back to the main processing queue.
+        This is called during startup to resume jobs that failed due to system errors.
+        """
+        error_queue = settings.RABBITMQ_ERROR_QUEUE_NAME
+        main_queue = settings.RABBITMQ_QUEUE_NAME
+        
+        logger.info(f"Checking for failed jobs in queue '{error_queue}'...")
+        
+        count = 0
+        while True:
+            # Get one message from the error queue
+            method_frame, properties, body = channel.basic_get(queue=error_queue, auto_ack=True)
+            if method_frame is None:
+                break
+            
+            # Re-publish to main queue
+            channel.basic_publish(
+                exchange='',
+                routing_key=main_queue,
+                body=body,
+                properties=properties
+            )
+            count += 1
+        
+        if count > 0:
+            logger.info(f"Recovered {count} jobs from error queue to main queue.")
+        else:
+            logger.info("No failed jobs found for recovery.")
 
     def start_listening(self):
         # 1. Perform startup self-test
@@ -175,9 +218,16 @@ class WorkerService:
 
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
-        channel.queue_declare(queue="ocr_job_tasks", durable=True)
+        
+        # Ensure both queues exist
+        channel.queue_declare(queue=settings.RABBITMQ_QUEUE_NAME, durable=True)
+        channel.queue_declare(queue=settings.RABBITMQ_ERROR_QUEUE_NAME, durable=True)
+        
+        # Recovery phase
+        self.recover_failed_jobs(channel)
+        
         channel.basic_qos(prefetch_count=1)
-        channel.basic_consume(queue="ocr_job_tasks", on_message_callback=self._on_message)
+        channel.basic_consume(queue=settings.RABBITMQ_QUEUE_NAME, on_message_callback=self._on_message)
 
         logger.info("Worker started successfully. Waiting for commands...")
         channel.start_consuming()

@@ -7,5 +7,4 @@ if (-not (Test-Path ".\scripts\set_env.ps1")) {
 }
 . .\scripts\set_env.ps1
 
-# -m uvicorn startet den REST-API-Server mit Hot-Reloading für Entwicklungszwecke
 python -m app.main_worker

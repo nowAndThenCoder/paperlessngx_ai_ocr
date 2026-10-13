@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     REDIS_HOST: str = Field(default="localhost", description="Redis Hostname / Container Name")
     REDIS_PORT: int = Field(default=6379, description="Redis Port")
     RABBITMQ_HOST: str = Field(default="localhost", description="RabbitMQ Hostname / Container Name")
+    RABBITMQ_QUEUE_NAME: str = "ocr_job_tasks"
+    RABBITMQ_ERROR_QUEUE_NAME: str = "ocr_job_errors"
 
     OLLAMA_URL: str = Field(default="http://localhost:11434", description="Ollama API URL")
     OLLAMA_MODEL_VL: str = Field(default="vision-model:latest", description="Vision Model used")

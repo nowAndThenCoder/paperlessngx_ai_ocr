@@ -12,7 +12,7 @@ class JobCommandPublisher:
     """
 
     def __init__(self):
-        self.queue_name = "ocr_commands"
+        self.queue_name = settings.RABBITMQ_QUEUE_NAME
         self._connection = None
         self._channel = None
 
@@ -28,25 +28,29 @@ class JobCommandPublisher:
                 logger.error(f"Failed to connect to RabbitMQ: {e}")
                 raise
 
-    def publish_command(self, command: BaseCommand) -> None:
+    def publish_command(self, command: BaseCommand, queue_name: Optional[str] = None) -> None:
         """
-        Serializes a command and publishes it to the RabbitMQ queue.
+        Serializes a command and publishes it to the specified RabbitMQ queue.
+        Defaults to the main queue defined in settings.
         """
         try:
             self._ensure_connection()
+            
+            target_queue = queue_name or settings.RABBITMQ_QUEUE_NAME
             
             # Serialize the Pydantic model to JSON
             payload = command.model_dump_json()
             
             self._channel.basic_publish(
                 exchange='',
-                routing_key=self.queue_name,
+                routing_key=target_queue,
                 body=payload,
                 properties=pika.BasicProperties(
                     delivery_mode=2,  # make message persistent
+                    headers={'command_type': command.__class__.__name__},
                 )
             )
-            logger.debug(f"Published command {command.__class__.__name__} for job {command.job_id}")
+            logger.debug(f"Published command {command.__class__.__name__} for job {command.job_id} to {target_queue}")
         except Exception as e:
             logger.error(f"Failed to publish command {command.__class__.__name__} for job {command.job_id}: {e}")
             raise
