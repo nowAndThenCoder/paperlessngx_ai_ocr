@@ -1,6 +1,5 @@
 import logging
 from app.repositories.job_repository import job_repository
-from app.services.job_storage_service import job_storage_service
 from app.services.pdf_service import PdfService
 from app.services.ocr_query_service import OcrQueryService
 from app.services.vectorization_service import VectorizationService
@@ -19,7 +18,6 @@ class ServiceProvider:
 
     def __init__(self):
         self.job_repository = job_repository
-        self.job_storage = job_storage_service
         self.ocr_service = OcrQueryService()
         self.pdf_service = PdfService()
         self.vector_service = VectorizationService(rest_client, ollama_client)

@@ -132,18 +132,16 @@ class WorkerService:
 
             # 2. Restore command instance
             command_instance = command_cls(**raw_data)
-            
-            # Store current status for recovery in case of failure
-            initial_status = command_instance.get_current_status()
 
             # 3. Command executes itself
-            logger.info(f"Starting execution for [{command_type}] (Job: {command_instance})")
+            logger.info(f"Job {command_instance.job_id}: starting execution for {command_type}")
+            
             success = command_instance.execute()
 
             if not success:
                 raise RuntimeError(f"Command {command_type} execution failed (returned False)")
 
-            logger.info(f"Successfully completed: [{command_type}] (Job: {command_instance})")
+            logger.info(f"Job {command_instance.job_id}: completed execution for {command_type}")
 
             # 4. Dispatch next command in pipeline
             next_command = command_instance.create_next_command()
@@ -154,17 +152,7 @@ class WorkerService:
                 logger.info(f"Pipeline finished for job {command_instance.job_id}")
 
         except Exception as e:
-            # Extract the root cause if it's a wrapped exception (like RuntimeError from 'if not success')
-            root_cause = e
-            if isinstance(e, RuntimeError) and e.__cause__:
-                root_cause = e.__cause__
-            
-            logger.error(f"Error during execution of {command_type}: {root_cause}", exc_info=True)
-
-            # Restore status to the state before this command started
-            if 'initial_status' in locals() and initial_status is not None:
-                logger.info(f"Resetting status for job {command_instance.job_id} to {initial_status}")
-                service_provider.job_storage.reset_status(command_instance.job_id, initial_status)
+            logger.error(f"Job {command_instance.job_id if 'command_instance' in locals() else 'unknown'}: error during {command_type}: {e}", exc_info=True)
 
             # Move the original command to the error queue immediately upon failure
             try:

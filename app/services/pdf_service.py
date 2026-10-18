@@ -31,78 +31,61 @@ class PdfService:
             raise ValueError("No source pages metadata found in Job. Cannot generate PDF.")
 
         for physical_page in job.source_pages:
-            # We expect each physical page to have its OCR results already populated
-            # in the domain model via the pipeline.
-            if physical_page.ocr_page_result is None:
-                # If OCR results are missing for a page, we still add the image
-                # but without a text layer.
-                page_doc = self._create_pdf_page(physical_page, None)
-                doc.insert_pdf(page_doc)
-            else:
-                page_doc = self._create_pdf_page(physical_page, physical_page.ocr_page_result)
-                doc.insert_pdf(page_doc)
+            # We create the page directly in the main document
+            self._add_pdf_page(doc, physical_page)
 
         # Save to bytes
         pdf_bytes = doc.tobytes()
         doc.close()
         return pdf_bytes
 
-    def _create_pdf_page(self, physical_page: PageInputData, ocr_results: OcrDocument | None) -> fitz.Document:
+    def _add_pdf_page(self, doc: fitz.Document, physical_page: PageInputData):
         """
-        Creates a single-page PDF document containing the original image
-        as background and an invisible text layer.
-
-        Args:
-            physical_page: The physical page data (image bytes, dimensions).
-            ocr_results: The OCR results containing logical pages and lines.
-
-        Returns:
-            A fitz.Document containing exactly one page.
+        Adds a single page to the document containing the original image
+        as background and a searchable invisible text layer.
         """
-        # Create a temporary document for this single page
-        page_doc = fitz.open()
-
         # Get image bytes
         img_bytes = physical_page.page_bytes
         if not img_bytes:
             # Create a blank page if no image is available
-            page = page_doc.new_page(width=physical_page.page_width, height=physical_page.page_height)
-            return page_doc
+            doc.new_page(width=physical_page.page_width, height=physical_page.page_height)
+            return
 
-        # Create a page with the image as background
-        # We create a page based on the image dimensions
+        # Use image dimensions for the page
         img = fitz.Pixmap(img_bytes)
-        page = page_doc.new_page(width=img.width, height=img.height)
+        page = doc.new_page(width=img.width, height=img.height)
 
         # Insert the image to cover the whole page
         page.insert_image(page.rect, stream=img_bytes)
 
         # If we have OCR results, add the invisible text layer
+        ocr_results = physical_page.intermediate_ocr_page_result
         if ocr_results and ocr_results.pages:
-            for ocr_page in ocr_results.pages:
-                if not ocr_page.text_lines:
-                    continue
-
+            # We only care about the first logical page of the result for this physical page
+            ocr_page = ocr_results.pages[0]
+            
+            if ocr_page.text_lines:
                 for line in ocr_page.text_lines:
                     if not line.text:
                         continue
 
                     # Transform normalized coordinates (0-1000) to PDF points
-                    # PyMuPDF coordinates are (x, y) from top-left.
-                    # Line coordinates: ymin, xmin, ymax, xmax
+                    x0 = (line.xmin / 1000.0) * img.width
+                    y0 = (line.ymin / 1000.0) * img.height
+                    x1 = (line.xmax / 1000.0) * img.width
+                    y1 = (line.ymax / 1000.0) * img.height
 
-                    x = (line.xmin / 1000.0) * img.width
-                    y = (line.ymin / 1000.0) * img.height
+                    # Define the rectangle for the text box
+                    rect = fitz.Rect(x0, y0, x1, y1)
 
-                    # We use render_mode=3 to make the text invisible but searchable
-                    page.insert_text(
-                        fitz.Point(x, y),
+                    # Use insert_textbox for precise placement and scaling
+                    page.insert_textbox(
+                        rect,
                         line.text,
-                        fontsize=10,  # Approximation, ideally relative to box height
+                        fontsize=10, 
                         render_mode=3,
+                        align=0 # Left align
                     )
-
-        return page_doc
 
 
 # Singleton instance

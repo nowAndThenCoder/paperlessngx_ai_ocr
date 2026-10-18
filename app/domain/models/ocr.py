@@ -1,7 +1,8 @@
 # app/domain/models/ocr.py
+from __future__ import annotations
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class OcrLine(BaseModel):
@@ -23,21 +24,20 @@ class OcrPage(BaseModel):
     Represents the OCR result for a single document page.
     """
 
-    page_id: Optional[int] = None
-    raw_text: Optional[str] = None  # Pure text extraction (without boxes)
+    page_id: Optional[int] = None # if there are more pages on one picture
     text_lines: Optional[List[OcrLine]] = None  # Structured lines with bounding boxes
 
 
 class OcrDocument(BaseModel):
     """
-    A collection of OCR pages forming a complete document.
+    A collection of OCR pages forming a complete picture.
     This class provides utility methods to merge multiple page results
-    and extract the full text across the entire document.
+    and extract the full text across the entire picture its based on.
     """
 
-    pages: Optional[List[OcrPage]] = None
+    pages: Optional[List[OcrPage]] = None  # if there are more pages on one picture
 
-    def merge(self, other: Optional["OcrDocument"]) -> None:
+    def merge(self, other: Optional[OcrDocument]) -> None:
         """
         Merges another OcrDocument object into this one.
         Ensures that pages are sorted by their page_id.
@@ -56,19 +56,3 @@ class OcrDocument(BaseModel):
                 p.page_id if p.page_id is not None else 0,
             )
         )
-
-    def get_full_text(self, separator: str = "\n\n\n") -> str:
-        """
-        Concatenates the raw_text of all pages into a single string.
-        Used for full-text search and knowledge retrieval.
-        """
-        if not self.pages:
-            return ""
-
-        all_texts: List[str] = []
-        for page in self.pages:
-            if not page.raw_text:
-                continue
-            all_texts.append(page.raw_text)
-
-        return separator.join(all_texts)

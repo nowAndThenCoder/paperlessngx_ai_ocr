@@ -1,10 +1,12 @@
 # app/repositories/job_repository.py
-from typing import Optional, List, Any
+import json
+import base64
+from typing import Dict, Optional, List, Any
 from uuid import UUID
 
-from app.domain.models.job import Job
+from app.domain.models.job import Job, JobStatus
 from app.domain.models.page import PageInputData
-from app.services.job_storage_service import job_storage_service
+from app.services.redis_client import redis_client
 
 
 class JobRepository:
@@ -14,44 +16,63 @@ class JobRepository:
     """
 
     def save(self, job: Job) -> None:
-        """Persists the current job state back into Redis."""
-        job_storage_service.save_job_meta(job.job_id, job.to_dict())
+        """Persists the current job state back into Redis as JSON."""
+        client = redis_client.get_connection()
+        
+        job_dict = {
+            "job_id": str(job.job_id),
+            "model_id": job.model_id,
+            "file_type": job.file_type,
+            "status": int(job.status),
+            "final_pdf_bytes": base64.b64encode(job.final_pdf_bytes).decode('utf-8') if job.final_pdf_bytes else None,
+            "source_pages": [
+                {**p.model_dump(), "page_bytes": base64.b64encode(p.page_bytes).decode('utf-8') if p.page_bytes else None}
+                for p in job.source_pages
+            ] if job.source_pages else None
+        }
+        
+        client.set(f"job:{job.job_id}", json.dumps(job_dict))
 
-    def create_job(self, file_type: str, total_pages: int, file_name: str, source_pages_data: List[Any] = None) -> Job:
+    def create_job(self, file_type: str, source_pages_data: Optional[List[PageInputData]] = None) -> Job:
         """
         Creates a new Job entity, initializes its state and persists it.
         """
         import uuid
         job_id = uuid.uuid4()
         job = Job(job_id=job_id, file_type=file_type)
-        job.total_pages = total_pages
-        
-        if source_pages_data:
-            job.source_pages = [
-                PageInputData(
-                    page_number=d["page_num"], 
-                    page_width=d["width"], 
-                    page_height=d["height"]
-                ) for d in source_pages_data
-            ]
+        job.source_pages = source_pages_data
             
         self.save(job)
         return job
 
-    def save_page_image(self, job_id: UUID, page_num: int, image_bytes: bytes) -> None:
-        """Persists a raw image blob for a specific page."""
-        job_storage_service.save_page_image(job_id, page_num, image_bytes)
-
     def find_by_id(self, job_id: UUID) -> Optional[Job]:
         """
-        Retrieves a Job instance by its ID.
+        Retrieves a Job instance by its ID from Redis JSON.
         Returns None if the job is not found.
         """
-        meta = job_storage_service.get_job_meta(job_id)
-        if meta is None:
+        client = redis_client.get_connection()
+        data_str = client.get(f"job:{job_id}")
+        if not data_str:
             return None
-        return Job.from_dict(meta)
-
+            
+        data = json.loads(data_str)
+        
+        job = Job(
+            job_id=UUID(data["job_id"]),
+            model_id=data.get("model_id"),
+            file_type=data.get("file_type")
+        )
+        job.status = JobStatus(data["status"])
+        job.final_pdf_bytes = base64.b64decode(data["final_pdf_bytes"]) if data.get("final_pdf_bytes") else None
+        
+        if data.get("source_pages"):
+            job.source_pages = [
+                PageInputData(
+                    **{**p, "page_bytes": base64.b64decode(p["page_bytes"]) if p.get("page_bytes") else None}
+                ) for p in data["source_pages"]
+            ]
+            
+        return job
 
 # Singleton instance for use across the app
 job_repository = JobRepository()

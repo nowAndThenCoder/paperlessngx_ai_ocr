@@ -1,6 +1,6 @@
 import json
 import textwrap
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from app.domain.models.ocr import OcrDocument, OcrLine, OcrPage
 from app.services.config import logging
@@ -73,19 +73,15 @@ class OcrQueryService:
         return cleaned_text
 
     def process_page_with_boxes(self, image_bytes: bytes) -> str:
-        logger.info(f"processing started")
         prompt = self.get_prompt_with_boxes()
         response = ollama_client.post_generate(image_bytes, prompt)
         sanitized_response = self.sanitize_response(response)
-        logger.info(f"processing finished")
         return sanitized_response
 
     def process_page_without_boxes(self, image_bytes: bytes) -> str:
-        logger.info(f"processing started")
         prompt = self.get_prompt_without_boxes()
         response = ollama_client.post_generate(image_bytes, prompt)
         sanitized_response = self.sanitize_response(response)
-        logger.info(f"processing finished")
         return sanitized_response
 
     def parse_ocr_string_to_document(self, increase_page_ids_by_offset: int, raw_json_str: str) -> OcrDocument:
@@ -98,7 +94,7 @@ class OcrQueryService:
             return OcrDocument(pages=None)
 
         try:
-            data: Any = json.loads(raw_json_str)
+            data: List[List] = json.loads(raw_json_str)
         except json.JSONDecodeError:
             return OcrDocument(pages=None)
 
@@ -152,62 +148,3 @@ class OcrQueryService:
 
         # returns a collection of orc_documents with the outcome that a n-pages long PDF document can have n+m-ocr_documents
         return OcrDocument(pages=ocr_pages if ocr_pages else None)
-
-    # TODO this function needs double checking
-    def convert_to_azure_json(
-        self, ocr_doc: Optional[OcrDocument], img_width: int = 1000, img_height: int = 1000
-    ) -> Dict[str, Any]:
-        """
-        Transforms the OcrDocument object into the Azure AI Read API JSON schema.
-        """
-        blocks: List[Dict[str, Any]] = []
-
-        if not ocr_doc or not ocr_doc.pages:
-            return {
-                "modelVersion": "2024-02-01",
-                "metadata": {"width": img_width, "height": img_height},
-                "readResult": {"blocks": []},
-            }
-
-        for page in ocr_doc.pages:
-            if not page.text_lines:
-                continue
-
-            lines: List[Dict[str, Any]] = []
-            for line in page.text_lines:
-                ymin = line.ymin if line.ymin is not None else 0
-                xmin = line.xmin if line.xmin is not None else 0
-                ymax = line.ymax if line.ymax is not None else ymin + 10
-                xmax = line.xmax if line.xmax is not None else xmin + 10
-
-                # Skalierung von Normkoordinaten (0-1000) auf Pixel-Dimensionen
-                x1 = int(xmin * img_width / 1000)
-                y1 = int(ymin * img_height / 1000)
-                x2 = int(xmax * img_width / 1000)
-                y2 = int(ymax * img_height / 1000)
-
-                polygon = [
-                    {"x": x1, "y": y1},
-                    {"x": x2, "y": y1},
-                    {"x": x2, "y": y2},
-                    {"x": x1, "y": y2},
-                ]
-
-                text_content = line.text if line.text is not None else ""
-
-                word = {
-                    "text": text_content,
-                    "boundingPolygon": polygon,
-                    "confidence": 0.99,
-                }
-
-                lines.append({"text": text_content, "boundingPolygon": polygon, "words": [word]})
-
-            if lines:
-                blocks.append({"lines": lines})
-
-        return {
-            "modelVersion": "2024-02-01",
-            "metadata": {"width": img_width, "height": img_height},
-            "readResult": {"blocks": blocks},
-        }

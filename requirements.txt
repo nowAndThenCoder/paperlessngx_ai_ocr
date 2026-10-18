@@ -9,3 +9,4 @@ Pillow
 lancedb
 urllib3
 pika
+azure-ai-documentintelligence

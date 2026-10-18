@@ -1,5 +1,6 @@
 from typing import Optional
 import time
+import json
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
@@ -12,9 +13,12 @@ from app.repositories.job_repository import job_repository
 from app.services.job_dispatcher import JobDispatcher
 from app.services.ocr_query_service import OcrQueryService
 from app.services.rest_client import rest_client
-from app.services.ollama_client import ollama_client
-from app.services.input_handler import InputHandler
+
+from app.services.document_input_service import DocumentInputService
 from app.domain.commands import OcrDocumentCommand
+from app.domain.models.ocr import OcrDocument
+from app.services.azure_ai_result_generator import AzureAIResultGenerator
+from app.services.response_factory import response_factory
 
 app = FastAPI(
     title="OCR Engine REST API (Azure Document Intelligence Mock)",
@@ -26,14 +30,11 @@ app = FastAPI(
 logger = logging.getLogger(__name__)
 ocr_service = OcrQueryService()
 job_dispatcher = JobDispatcher()
-input_handler = InputHandler()
+input_handler = DocumentInputService()
+azure_result_gen = AzureAIResultGenerator()
 
 
-@app.post(
-    "/documentintelligence/documentModels/{model_id}:analyze",
-    status_code=202,
-    summary="Entry URL for OCR execution on documents",
-)
+@app.post("/documentintelligence/documentModels/{model_id}:analyze", status_code=202, summary="Entry URL for OCR execution on documents")
 async def analyze_document(
     model_id: str,
     request: Request,
@@ -45,30 +46,18 @@ async def analyze_document(
         file_bytes = rest_client.fetch_file_bytes_from_request(content_type or "", body_bytes)
         file_type = rest_client.get_file_type_of_bytes(file_bytes)
 
-        # 1. Split file into pages and persist the Job
-        pages = input_handler.split_file(file_bytes, file_type)
-        if not pages:
+        # Split file into pages and persist the Job
+        pageInputDataList = input_handler.split_file(file_bytes, file_type)
+        if not pageInputDataList:
             raise HTTPException(status_code=400, detail="Could not parse file into pages.")
-
-        # Prepare metadata for source pages (dimensions) to be stored in Job meta
-        source_pages_meta = [
-            {"page_num": p[0], "width": p[2], "height": p[3]} 
-            for p in pages
-        ]
 
         # Create and save the job entity with source pages meta
         job = job_repository.create_job(
             file_type=file_type, 
-            total_pages=len(pages), 
-            file_name=f"upload_{int(time.time())}",
-            source_pages_data=source_pages_meta
+            source_pages_data=pageInputDataList
         )
-        
-        # Save page images to storage
-        for page_num, page_bytes, _, _ in pages:
-            job_repository.save_page_image(job.job_id, page_num, page_bytes)
 
-        # 2. Start the pipeline by dispatching the first command
+        # Start the pipeline by dispatching the first command
         first_command = OcrDocumentCommand(job_id=job.job_id)
         job_dispatcher.dispatch(first_command)
 
@@ -84,16 +73,12 @@ async def analyze_document(
                 "Access-Control-Expose-Headers": "Operation-Location",
             },
         )
-
     except Exception as e:
         logger.error(f"Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"internal error: {str(e)}")
 
 
-@app.get(
-    "/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}",
-    summary="Polling endpoint for status & OCR JSON result",
-)
+@app.get("/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}", summary="Polling endpoint for status & OCR JSON result")
 async def get_analysis_result(
     model_id: str,
     job_id: str,
@@ -104,68 +89,26 @@ async def get_analysis_result(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid Job ID format: {job_id}")
 
-    # TODO get job from redis
     from app.repositories.job_repository import job_repository
     job = job_repository.find_by_id(parsed_uuid)
 
     if not job:
         raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found.")
 
-    # Status: RUNNING or NOT_STARTED
-    if job.status != JobStatus.FAILED and job.status != JobStatus.SUCCEEDED:
-        job_status_text = job.status.to_friendly_string()
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": job_status_text,
-                "createdDateTime": job.created_at,
-                "lastUpdatedDateTime": job.updated_at,
-                "percentCompleted": job.get_completion_percentage(),
-            },
-        )
-    elif job.status == JobStatus.FAILED:
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "failed",
-                "createdDateTime": job.created_at,
-                "lastUpdatedDateTime": job.updated_at,
-                "error": {
-                    "code": "InternalServerError",
-                    "message": getattr(job, "error_message", None) or "Unknown error during OCR processing.",
-                },
-            },
-        )
+    if job.status.to_friendly_string() == "running":
+        return response_factory.create_polling_response(job)
+    
+    elif job.status.to_friendly_string() == "failed":
+        return response_factory.create_error_response(job)
+
     else:
-        # Status: SUCCEEDED -> Assemble Azure AI Read JSON
-        merged_docs = OcrDocuments(pages=[])
-        for page in job.source_pages or []:
-            if page.ocr_page_result:
-                merged_docs.merge(page.ocr_page_result)
-
-        first_page = job.source_pages[0] if job.source_pages else None
-        width = int(first_page.page_width) if first_page else 1000
-        height = int(first_page.page_height) if first_page else 1000
-
-        analyze_result = ocr_service.convert_ocr_documents_to_azure_json(
-            merged_docs, img_width=width, img_height=height
-        )
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "succeeded",
-                "createdDateTime": job.created_at,
-                "lastUpdatedDateTime": job.updated_at,
-                "analyzeResult": analyze_result,
-            },
-        )
+        logger.info(f"Job {job.job_id}: is completed")
+        analyze_result_obj = azure_result_gen.generate_analyze_result(job, api_version=api_version)
+        analyze_result_dict = azure_result_gen.to_dict(analyze_result_obj)
+        return response_factory.create_success_response(analyze_result_dict)
 
 
-@app.get(
-    "/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}/pdf",
-    summary="Download of the processed PDF file",
-)
+@app.get("/documentintelligence/documentModels/{model_id}/analyzeResults/{job_id}/pdf", summary="Download of the processed PDF file")
 async def get_analyze_result_pdf(
     model_id: str,
     job_id: str,
@@ -177,22 +120,13 @@ async def get_analyze_result_pdf(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid Job ID format: {job_id}")
 
+    from app.repositories.job_repository import job_repository
     job = job_repository.find_by_id(parsed_uuid)
+
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found.")
-
-    if job.status != JobStatus.SUCCEEDED:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Job {job_id} is not yet complete (Current status: {job.status.value}).",
-        )
-
-    # Prefers final_pdf_bytes generated in step 3, otherwise fallback
-    # pdf_bytes = job.final_pdf_bytes or (
-    #    job.source_pages[0].page_bytes if job.source_pages and job.source_pages[0].page_bytes else None
-    # )
-
-    pdf_bytes = None
+        raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found.")
+    
+    pdf_bytes = job.final_pdf_bytes
 
     if not pdf_bytes:
         raise HTTPException(status_code=404, detail="No PDF bytes available for this job.")
