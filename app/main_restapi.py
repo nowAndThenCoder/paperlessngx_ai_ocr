@@ -7,7 +7,7 @@ from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from uuid import UUID
 
-from app.services.config import logging
+from app.services.config import logging, settings
 from app.domain.models.job import JobStatus
 from app.repositories.job_repository import job_repository
 from app.services.job_dispatcher import JobDispatcher
@@ -30,7 +30,7 @@ app = FastAPI(
 logger = logging.getLogger(__name__)
 ocr_service = OcrQueryService()
 job_dispatcher = JobDispatcher()
-input_handler = DocumentInputService()
+input_handler = DocumentInputService(dpi=settings.OLLAMA_DPI)
 azure_result_gen = AzureAIResultGenerator()
 
 

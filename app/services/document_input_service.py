@@ -14,14 +14,22 @@ class DocumentInputService:
     To minimize RAM, it returns a list of bytes rather than B64 strings.
     """
 
+    def __init__(self, dpi: int = 300):
+        self.dpi = dpi
+
     def parse_pdf(self, file_bytes: bytes) -> List[PageInputData]:
         """Slices a PDF/PDF-A into individual PNG images. Returns (page_num, bytes, width, height)."""
         pages = []
 
         doc = fitz.open(stream=file_bytes, filetype="pdf")
+        
+        # Calculate scale factor to achieve the desired DPI (PyMuPDF default is 72 DPI)
+        dpi_scale = self.dpi / 72
+        matrix = fitz.Matrix(dpi_scale, dpi_scale)
+
         for page_num in range(len(doc)):
             page_obj = doc.load_page(page_num)
-            pix = page_obj.get_pixmap(matrix=fitz.Matrix(2, 2))
+            pix = page_obj.get_pixmap(matrix=matrix)
             img_bytes = pix.tobytes("png")
 
             page = PageInputData(

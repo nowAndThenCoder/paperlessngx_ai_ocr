@@ -18,4 +18,3 @@ docker/
 scripts/
 test/
 lancedb_data/
-ocr_engine_standalone.egg-info/

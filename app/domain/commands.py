@@ -134,13 +134,13 @@ class OcrParseResponseCommand(BaseCommand):
         found_single_source_page = None
         
         for single_source_page in job.source_pages:
-            if single_source_page.intermediate_ocr_page_result is not None:
+            if single_source_page.intermediate_ocr_page_result and single_source_page.intermediate_ocr_page_result.pages:
                 count_pages = len(single_source_page.intermediate_ocr_page_result.pages)
                 total_page_count += count_pages
             if single_source_page.page_number == self.page_number:
                 found_single_source_page = single_source_page
 
-        found_single_source_page.intermediate_ocr_page_result = service_provider.ocr_service.parse_ocr_string_to_document(total_page_count+1, found_single_source_page.intermediate_ocr_page_unparsed_result)
+        found_single_source_page.intermediate_ocr_page_result = service_provider.ocr_service.parse_ocr_string_to_document(total_page_count + 1, found_single_source_page.intermediate_ocr_page_unparsed_result)
         service_provider.job_repository.save(job)
         
         return True
@@ -166,7 +166,7 @@ class CreateSearchablePdfCommand(BaseCommand):
         # Export PDF to local file for debugging/verification
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{self.job_id}_{timestamp}.pdf"
+        filename = f"./test/output/{self.job_id}_{timestamp}.pdf"
         with open(filename, "wb") as f:
             f.write(pdf_bytes)
         logger.info(f"PDF exported to local file: {filename}")

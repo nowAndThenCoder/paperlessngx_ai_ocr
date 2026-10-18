@@ -20,18 +20,18 @@ class OcrQueryService:
             The documents are primarily in {settings.DOCUMENT_LANGUAGE}.
 
             RULES:
-            1. Physically separate documents must be assigned their own "page" number (1, 2, ...).
+            1. Physically separate documents must be assigned their own document "id" (1, 2, ...).
             2. Do not ignore any handwriting, notes, checkboxes, or receipt lines.
-            3. Coordinates [ymin, xmin, ymax, xmax] must be between 0 and 1000.
+            3. Coordinates [ymin, xmin, ymax, xmax] must be between 0 and 1000 to cover the WHOLE image globally, no matter which document the text belongs to. Do NOT reset coordinates for the second document; use its absolute position on the entire image width.
 
             SCHEMA (Strict Requirement):
-            Return a JSON array of arrays: [page, ymin, xmin, ymax, xmax, "text"]
+            Return a JSON array of arrays: [id, ymin, xmin, ymax, xmax, "text"]
 
             EXAMPLE:
             [
-            [1, 120, 50, 135, 450, "First line of Doc 1"],
-            [1, 140, 50, 160, 400, "Signature Mr. Sample"],
-            [2, 120, 520, 135, 950, "First line of Doc 2"]
+            [1, 120,  50, 135, 450, "First line of Doc 1 (left receipt)"],
+            [1, 140,  50, 160, 400, "Signature on Doc 1"],
+            [2, 120, 520, 135, 950, "First line of Doc 2 (right receipt)"]
             ]
 
             Start immediately with `[`.\
