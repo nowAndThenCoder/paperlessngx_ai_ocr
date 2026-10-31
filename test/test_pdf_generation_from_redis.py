@@ -6,7 +6,7 @@ from app.services.pdf_service import pdf_service
 
 def test_generate_pdf_from_existing_redis_job():
     # The specific job ID provided by the user
-    job_id_str = "1b265a3d-0da8-4c77-be25-fb62166ecb2f"
+    job_id_str = "52793ceb-fa76-4fda-905d-3f79daffc2d4"
     job_id = UUID(job_id_str)
 
     print(f"Loading job {job_id} from Redis...")

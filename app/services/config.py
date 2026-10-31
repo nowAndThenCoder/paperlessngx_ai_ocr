@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL_TEXTEMBED: str = Field(default="nomic-embed-text", description="Text Embedding Model used")
     OLLAMA_TIMEOUT: int = Field(default=4800, description="Timeout for Ollama requests in seconds")
     OLLAMA_DPI: int = Field(default=300, description="DPI for PDF page rendering")
+    OCR_COOLDOWN_SECONDS: int = Field(default=60, description="Cooldown time between heavy OCR operations to prevent GPU overheating")
     LANCEDB_DATA_DIR: str = Field(default="./lancedb_data", description="Path to LanceDB data directory")
     DOCUMENT_LANGUAGE: str = Field(default="German", description="Primary language of documents to be processed")
 

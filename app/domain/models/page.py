@@ -14,7 +14,7 @@ class PageInputData(BaseModel):
     page_height: float
     page_bytes: Optional[bytes] = None
 
-    intermediate_ocr_page_unparsed_result: Optional[str] = None # result of OCR with bounding boxes
-    intermediate_ocr_page_result: Optional[OcrDocument] = None # result of OCR with bounding boxes after parsing
-    intermediate_text_result: Optional[str] = None  # result of OCR without bounding boxes
+    intermediate_ocr_unparsed_page_result: Optional[str] = None # result of OCR with bounding boxes
+    intermediate_ocr_parsed_page_result: Optional[OcrDocument] = None # result of OCR with bounding boxes after parsing
+    intermediate_ocr_text_only_result: Optional[str] = None  # result of OCR without bounding boxes
     intermediate_embeddings_result: Optional[List[float]] = None

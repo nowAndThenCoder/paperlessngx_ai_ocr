@@ -65,16 +65,16 @@ class Job:
 
     def get_full_text(self) -> str:
         """
-        Concatenates the intermediate_text_result from all source pages,
+        Concatenates the intermediate_ocr_text_only_result from all source pages,
         separated by the DOCUMENT_PAGE_BREAK string.
         """
         if not self.source_pages:
             return ""
         
         texts = [
-            page.intermediate_text_result 
+            page.intermediate_ocr_text_only_result 
             for page in self.source_pages 
-            if page.intermediate_text_result is not None
+            if page.intermediate_ocr_text_only_result is not None
         ]
         
         return "=== DOCUMENT_PAGE_BREAK ===".join(texts)

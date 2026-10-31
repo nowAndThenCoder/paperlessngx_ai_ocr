@@ -56,7 +56,7 @@ class PdfService:
             height=page_height,
         )
 
-        ocr_document = physical_page.intermediate_ocr_page_result
+        ocr_document = physical_page.intermediate_ocr_parsed_page_result
 
         if not ocr_document or not ocr_document.pages:
             logger.error("no document or pages")

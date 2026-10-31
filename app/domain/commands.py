@@ -41,7 +41,7 @@ class OcrDocumentCommand(BaseCommand):
 
         # chain will be called: OcrDocumentCommand -> OcrPageCommand -> OcrPageTextOnlyCommand -> OcrParseResponseCommand -> OcrDocumentCommand
         for single_source_page in job.source_pages:
-            if single_source_page.intermediate_ocr_page_result is None:
+            if single_source_page.intermediate_ocr_parsed_page_result is None:
                 return True
 
         # chain will be called: OcrDocumentCommand -> CreateSearchablePdfCommand -> OcrDocumentCommand
@@ -62,7 +62,7 @@ class OcrDocumentCommand(BaseCommand):
         job = self.load_job()
 
         for single_source_page in job.source_pages:
-            if single_source_page.intermediate_ocr_page_result is None:
+            if single_source_page.intermediate_ocr_parsed_page_result is None:
                 return OcrPageCommand(job_id=self.job_id, page_number=single_source_page.page_number)
         
         if job.final_pdf_bytes is None:
@@ -89,7 +89,7 @@ class OcrPageCommand(BaseCommand):
             if single_source_page.page_number == self.page_number:
                 found_single_source_page = single_source_page
 
-        found_single_source_page.intermediate_ocr_page_unparsed_result = service_provider.ocr_service.process_page_with_boxes(found_single_source_page.page_bytes)
+        found_single_source_page.intermediate_ocr_unparsed_page_result = service_provider.ocr_service.process_page_with_boxes(found_single_source_page.page_bytes)
         service_provider.job_repository.save(job)
 
         return True
@@ -112,7 +112,7 @@ class OcrPageTextOnlyCommand(BaseCommand):
             if single_source_page.page_number == self.page_number:
                 found_single_source_page = single_source_page
 
-        found_single_source_page.intermediate_text_result = service_provider.ocr_service.process_page_without_boxes(found_single_source_page.page_bytes)
+        found_single_source_page.intermediate_ocr_text_only_result = service_provider.ocr_service.process_page_without_boxes(found_single_source_page.page_bytes)
         service_provider.job_repository.save(job)
 
         return True
@@ -134,13 +134,13 @@ class OcrParseResponseCommand(BaseCommand):
         found_single_source_page = None
         
         for single_source_page in job.source_pages:
-            if single_source_page.intermediate_ocr_page_result and single_source_page.intermediate_ocr_page_result.pages:
-                count_pages = len(single_source_page.intermediate_ocr_page_result.pages)
+            if single_source_page.intermediate_ocr_parsed_page_result and single_source_page.intermediate_ocr_parsed_page_result.pages:
+                count_pages = len(single_source_page.intermediate_ocr_parsed_page_result.pages)
                 total_page_count += count_pages
             if single_source_page.page_number == self.page_number:
                 found_single_source_page = single_source_page
 
-        found_single_source_page.intermediate_ocr_page_result = service_provider.ocr_service.parse_ocr_string_to_document(total_page_count + 1, found_single_source_page.intermediate_ocr_page_unparsed_result)
+        found_single_source_page.intermediate_ocr_parsed_page_result = service_provider.ocr_service.parse_ocr_string_to_document(total_page_count + 1, found_single_source_page.intermediate_ocr_unparsed_page_result)
         service_provider.job_repository.save(job)
         
         return True
@@ -190,7 +190,7 @@ class VectorizeCommand(BaseCommand):
         job.status = JobStatus.VECTORIZING
 
         for source_page in job.source_pages:
-            source_page.intermediate_embeddings_result = service_provider.vector_service.vectorize_text(source_page.intermediate_text_result)
+            source_page.intermediate_embeddings_result = service_provider.vector_service.vectorize_text(source_page.intermediate_ocr_text_only_result)
 
         service_provider.job_repository.save(job)
 
@@ -214,7 +214,7 @@ class PersistLanceDbCommand(BaseCommand):
             lancedb_service.persist_page(
                 job_id=self.job_id,
                 page_id=source_page.page_number,
-                text=source_page.intermediate_text_result,
+                text=source_page.intermediate_ocr_text_only_result,
                 embeddings=source_page.intermediate_embeddings_result,
                 metadata={"model_id": job.model_id},
             )
